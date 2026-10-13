@@ -1,6 +1,47 @@
-@HireFlow.Api_HostAddress = http://localhost:5184
+@host = http://localhost:5000
 
-GET {{HireFlow.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### Создать вакансию
+POST {{host}}/vacancies
+Content-Type: application/json
 
-###
+{
+  "title": "Стажёр .NET",
+  "description": "Разработка сервиса найма",
+  "requirements": {
+    "requiredSkills": ["C#", "SQL"],
+    "niceToHaveSkills": ["Docker", "PostgreSQL"],
+    "minYearsOfExperience": 0,
+    "passingScore": 60
+  }
+}
+
+### Список вакансий
+GET {{host}}/vacancies
+
+### Гет вакансии по id
+GET {{host}}/vacancies/1
+
+### обновить (закрыть) вакансию
+PUT {{host}}/vacancies/1
+Content-Type: application/json
+
+{
+  "title": "Стажёр .NET",
+  "description": "Набор закрыт",
+  "requirements": {
+    "requiredSkills": ["C#", "SQL"],
+    "niceToHaveSkills": [],
+    "minYearsOfExperience": 0,
+    "passingScore": 60
+  },
+  "isOpen": false
+}
+
+### Ошибка валидации
+POST {{host}}/vacancies
+Content-Type: application/json
+
+{ "title": "", "requirements": null }
+
+### Удалить
+DELETE {{host}}/vacancies/1
