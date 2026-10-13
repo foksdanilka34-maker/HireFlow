@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HireFlow.Api/HireFlow.Api.csproj" />
+    <Project Path="src/HireFlow.Bot/HireFlow.Bot.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HireFlow.Api.Tests/HireFlow.Api.Tests.csproj" />
+  </Folder>
+</Solution>
