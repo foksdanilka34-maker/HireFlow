@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Локальное хранилище файлов (заглушка S3)
+storage/

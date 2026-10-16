@@ -1,52 +1,49 @@
+using HireFlow.Api.Common;
+using HireFlow.Application.Vacancies;
+using HireFlow.Domain.Vacancies;
+
 namespace HireFlow.Api.Vacancies;
-
-public record CreateVacancyRequest(
-    string Title, string? Description, VacancyRequirements Requirements
-);
-
-public record UpdateVacancyRequest(
-    string Title, string? Description, VacancyRequirements Requirements, bool IsOpen
-);
 
 public static class VacancyEndpoints
 {
+    // Регистрирует HTTP-маршруты /vacancies.
     public static void MapVacancyEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/vacancies");
 
-        group.MapGet("/", (VacancyStore store) => store.GetAll());
-        group.MapGet("/{id:int}", (int id, VacancyStore store) => {
-            var vacancy = store.Get(id);
-            return vacancy is null ? Results.NotFound() : Results.Ok(vacancy);
-        });
+        group.MapGet("/", async (string? status, IVacancyService service, CancellationToken ct) =>
+            EnumQuery.TryParse<VacancyStatus>(status, out var parsed)
+                ? Results.Ok(await service.GetAllAsync(parsed, ct))
+                : Results.Problem($"Unknown status '{status}'.", statusCode: StatusCodes.Status400BadRequest));
 
-        group.MapPost("/", (CreateVacancyRequest request, VacancyStore store) =>
+        group.MapGet("/{id:guid}", (Guid id, IVacancyService service, CancellationToken ct) =>
+            service.GetAsync(id, ct));
+
+        group.MapPost("/", async (VacancyRequest request, IVacancyService service, CancellationToken ct) =>
         {
-            Console.WriteLine(request);
-            var error = Validate(request.Title, request.Requirements);
-            if (error is not null)
-                return Results.BadRequest(new {error});
-
-            var vacancy = store.Add(request.Title, request.Description, request.Requirements);
+            var vacancy = await service.CreateAsync(request, ct);
             return Results.Created($"/vacancies/{vacancy.Id}", vacancy);
         });
 
-        group.MapDelete("/{id:int}", (int id, VacancyStore store) =>
-            store.Delete(id) ? Results.NoContent() : Results.NotFound());
-    }
+        group.MapPut("/{id:guid}", (Guid id, VacancyRequest request, IVacancyService service, CancellationToken ct) =>
+            service.UpdateAsync(id, request, ct));
 
-    private static string? Validate(string title, VacancyRequirements? requirements)
-    {
-        if (string.IsNullOrWhiteSpace(title))
-            return "Title is required";
-        if (requirements is null)
-            return "Requirements are required";
-        if (requirements.RequiredSkills is null || requirements.RequiredSkills.Count == 0)
-            return "At least one required skill is needed";
-        if (requirements.MinYearsOfExperience < 0)
-            return "Experience cannot be negative";
-        if (requirements.PassingScore is < 0 or > 100)
-            return "Passing score must be between 0 and 100";
-        return null;
+        group.MapPost("/{id:guid}/open", (Guid id, IVacancyService service, CancellationToken ct) =>
+            service.OpenAsync(id, ct));
+
+        group.MapPost("/{id:guid}/close", (Guid id, IVacancyService service, CancellationToken ct) =>
+            service.CloseAsync(id, ct));
+
+        group.MapPost("/{id:guid}/archive", (Guid id, IVacancyService service, CancellationToken ct) =>
+            service.ArchiveAsync(id, ct));
+
+        group.MapPost("/{id:guid}/unarchive", (Guid id, IVacancyService service, CancellationToken ct) =>
+            service.UnarchiveAsync(id, ct));
+
+        group.MapDelete("/{id:guid}", async (Guid id, IVacancyService service, CancellationToken ct) =>
+        {
+            await service.DeleteAsync(id, ct);
+            return Results.NoContent();
+        });
     }
 }

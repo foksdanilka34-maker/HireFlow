@@ -1,47 +1,189 @@
-@host = http://localhost:5000
+@host = http://localhost:5184
+@id = подставь-id-вакансии-из-ответа-на-создание
+@applicationId = подставь-id-отклика
+@notificationId = подставь-id-уведомления
+
+### Проверка, что API запущен
+GET {{host}}/health
 
 ### Создать вакансию
 POST {{host}}/vacancies
 Content-Type: application/json
 
 {
-  "title": "Стажёр .NET",
+  "title": "C# Developer",
+  "direction": "Разработка",
   "description": "Разработка сервиса найма",
   "requirements": {
-    "requiredSkills": ["C#", "SQL"],
-    "niceToHaveSkills": ["Docker", "PostgreSQL"],
-    "minYearsOfExperience": 0,
+    "requiredSkills": [
+      { "name": "C#", "synonyms": [".NET", "dotnet"] },
+      { "name": "ASP.NET", "synonyms": ["ASP.NET Core"] },
+      { "name": "SQL", "synonyms": ["PostgreSQL", "MS SQL"] }
+    ],
+    "niceToHaveSkills": [{ "name": "Docker" }],
+    "minYearsOfExperience": 1,
     "passingScore": 60
   }
 }
 
-### Список вакансий
-GET {{host}}/vacancies
-
-### Гет вакансии по id
-GET {{host}}/vacancies/1
-
-### обновить (закрыть) вакансию
-PUT {{host}}/vacancies/1
-Content-Type: application/json
-
-{
-  "title": "Стажёр .NET",
-  "description": "Набор закрыт",
-  "requirements": {
-    "requiredSkills": ["C#", "SQL"],
-    "niceToHaveSkills": [],
-    "minYearsOfExperience": 0,
-    "passingScore": 60
-  },
-  "isOpen": false
-}
-
-### Ошибка валидации
+### Создать вакансию другого направления
 POST {{host}}/vacancies
 Content-Type: application/json
 
-{ "title": "", "requirements": null }
+{
+  "title": "QA Automation C#",
+  "direction": "Тестирование",
+  "requirements": {
+    "requiredSkills": [
+      { "name": "C#" },
+      { "name": "автотесты", "synonyms": ["Selenium", "Playwright", "автотестирование"] },
+      { "name": "тест-дизайн", "synonyms": ["тест-кейсы", "test design"] }
+    ],
+    "passingScore": 60
+  }
+}
+
+### Список (открытые и закрытые, без архива)
+GET {{host}}/vacancies
+
+### Только открытые (так будет спрашивать бот)
+GET {{host}}/vacancies?status=open
+
+### Только архив
+GET {{host}}/vacancies?status=archived
+
+### Вакансия по id
+GET {{host}}/vacancies/{{id}}
+
+### Изменить вакансию (PUT заменяет вакансию целиком)
+PUT {{host}}/vacancies/{{id}}
+Content-Type: application/json
+
+{
+  "title": "Junior C# Developer",
+  "direction": "Разработка",
+  "requirements": {
+    "requiredSkills": [
+      { "name": "C#", "synonyms": [".NET"] },
+      { "name": "ASP.NET" }
+    ],
+    "passingScore": 70,
+    "borderlineWidth": 15
+  },
+  "freezePeriodDays": 30
+}
+
+### Закрыть приём откликов
+POST {{host}}/vacancies/{{id}}/close
+
+### Открыть приём откликов
+POST {{host}}/vacancies/{{id}}/open
+
+### В архив
+POST {{host}}/vacancies/{{id}}/archive
+
+### Из архива (станет закрытой)
+POST {{host}}/vacancies/{{id}}/unarchive
 
 ### Удалить
-DELETE {{host}}/vacancies/1
+DELETE {{host}}/vacancies/{{id}}
+
+### Кандидат: создать или обновить (бот вызывает, когда кандидат поделился номером)
+PUT {{host}}/candidates/123456789
+Content-Type: application/json
+
+{
+  "name": "Иван Петров",
+  "phone": "79991234567"
+}
+
+### Кандидат по Telegram ID
+GET {{host}}/candidates/123456789
+
+### Подбор вакансий под резюме (ничего не сохраняет)
+POST {{host}}/candidates/123456789/matches
+Content-Type: multipart/form-data; boundary=hireflow
+
+--hireflow
+Content-Disposition: form-data; name="yearsOfExperience"
+
+2
+--hireflow
+Content-Disposition: form-data; name="file"; filename="resume.pdf"
+Content-Type: application/pdf
+
+< ./resume.pdf
+--hireflow--
+
+### Отклик: файл резюме + вакансия + опыт (multipart-форма, как будет слать бот)
+POST {{host}}/applications
+Content-Type: multipart/form-data; boundary=hireflow
+
+--hireflow
+Content-Disposition: form-data; name="telegramId"
+
+123456789
+--hireflow
+Content-Disposition: form-data; name="vacancyId"
+
+{{id}}
+--hireflow
+Content-Disposition: form-data; name="yearsOfExperience"
+
+2
+--hireflow
+Content-Disposition: form-data; name="file"; filename="resume.pdf"
+Content-Type: application/pdf
+
+< ./resume.pdf
+--hireflow--
+
+### Отклик по id (с историей статусов)
+GET {{host}}/applications/{{applicationId}}
+
+### Очередь рекрутера: отклики на проверке
+GET {{host}}/applications?status=recruiter_review
+
+### Автоотказы — для выборочной проверки качества скрининга
+GET {{host}}/applications?status=auto_rejected
+
+### Все отклики по вакансии
+GET {{host}}/applications?vacancyId={{id}}
+
+### Решение рекрутера: invite — пригласить на созвон, reject — отказать
+POST {{host}}/applications/{{applicationId}}/decision
+Content-Type: application/json
+
+{
+  "decision": "invite",
+  "comment": "Сильный стек, зовём на созвон"
+}
+
+### Мои отклики (так их видит кандидат: in_review / invited / rejected)
+GET {{host}}/candidates/123456789/applications
+
+### Бот: уведомления, которым пора уйти кандидатам
+GET {{host}}/internal/notifications/due
+
+### Бот: уведомление отправлено
+POST {{host}}/internal/notifications/{{notificationId}}/sent
+
+### Бот: отправить не удалось — повтор через 2, 4, 8… минут, после 5 попыток уведомление станет ошибочным
+POST {{host}}/internal/notifications/{{notificationId}}/failed
+Content-Type: application/json
+
+{
+  "error": "Telegram API timeout"
+}
+
+### Ошибки валидации — 400 со списком всех ошибок
+POST {{host}}/vacancies
+Content-Type: application/json
+
+{
+  "title": "",
+  "requirements": {
+    "requiredSkills": [],
+    "passingScore": 150
+  }
+}
