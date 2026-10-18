@@ -1,6 +1,7 @@
 using HireFlow.Application.Common;
 using HireFlow.Application.Notifications;
 using HireFlow.Application.Resumes;
+using HireFlow.Domain;
 using HireFlow.Domain.JobApplications;
 using HireFlow.Domain.Screening;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +26,9 @@ public class JobApplicationService(
         var vacancy = await db.Vacancies.FirstOrDefaultAsync(v => v.Id == request.VacancyId, ct)
             ?? throw new NotFoundException($"Vacancy {request.VacancyId} not found.");
         vacancy.EnsureAcceptsApplications();
+
+        if (await db.JobApplications.AnyAsync(a => a.CandidateId == candidate.Id && a.VacancyId == vacancy.Id, ct))
+            throw new DomainException("Candidate has already applied to this vacancy.");
 
         var resume = resumeReader.Read(request.FileContent);
         var extension = resume.Format.ToString().ToLowerInvariant();

@@ -1,6 +1,7 @@
 using HireFlow.Application.Common;
 using HireFlow.Domain;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.EntityFrameworkCore;
 
 namespace HireFlow.Api.Errors;
 
@@ -14,6 +15,7 @@ public class AppExceptionHandler(IProblemDetailsService problemDetails) : IExcep
             NotFoundException => StatusCodes.Status404NotFound,
             BadRequestException => StatusCodes.Status400BadRequest,
             DomainException => StatusCodes.Status409Conflict,
+            DbUpdateConcurrencyException => StatusCodes.Status409Conflict,
             BadHttpRequestException badRequest => badRequest.StatusCode,
             _ => null,
         };
@@ -21,12 +23,16 @@ public class AppExceptionHandler(IProblemDetailsService problemDetails) : IExcep
         if (status is null)
             return false;
 
+        var detail = exception is DbUpdateConcurrencyException
+            ? "The record was changed by another request. Reload and try again."
+            : exception.Message;
+
         context.Response.StatusCode = status.Value;
         return await problemDetails.TryWriteAsync(new ProblemDetailsContext
         {
             HttpContext = context,
             Exception = exception,
-            ProblemDetails = { Status = status, Detail = exception.Message },
+            ProblemDetails = { Status = status, Detail = detail },
         });
     }
 }

@@ -17,6 +17,9 @@ public class JobApplicationConfiguration : IEntityTypeConfiguration<JobApplicati
         builder.HasKey(a => a.Id);
         builder.Property(a => a.Id).HasDefaultValueSql("uuidv7()");
 
+        // Токен оптимистичной блокировки на системной колонке PostgreSQL xmin (в таблице не создаётся).
+        builder.Property<uint>("xmin").IsRowVersion();
+
         builder.HasOne<Vacancy>().WithMany().HasForeignKey(a => a.VacancyId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Candidate>().WithMany().HasForeignKey(a => a.CandidateId).OnDelete(DeleteBehavior.Restrict);
 
