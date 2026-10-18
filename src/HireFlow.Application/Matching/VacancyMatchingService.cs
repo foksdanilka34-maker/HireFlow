@@ -8,9 +8,14 @@ namespace HireFlow.Application.Matching;
 
 public class VacancyMatchingService(IAppDbContext db, IResumeReader resumeReader) : IVacancyMatchingService
 {
-    public async Task<List<VacancyMatchResponse>> FindMatchesAsync(FindMatchesRequest request, CancellationToken ct)
+    public async Task<FindMatchesResponse> FindMatchesAsync(FindMatchesRequest request, CancellationToken ct)
     {
         var resume = resumeReader.Read(request.FileContent);
+        var years = request.YearsOfExperience ?? ResumeFacts.FindYearsOfExperience(resume.Text);
+        var phoneFound = ResumeFacts.FindPhone(resume.Text) is not null;
+        if (years is null)
+            return new FindMatchesResponse(null, ExperienceRequired: true, phoneFound, []);
+
         var appliedVacancyIds = await GetAppliedVacancyIdsAsync(request.TelegramId, ct);
 
         var vacancies = await db.Vacancies
@@ -18,12 +23,14 @@ public class VacancyMatchingService(IAppDbContext db, IResumeReader resumeReader
             .Where(v => v.Status == VacancyStatus.Open && !appliedVacancyIds.Contains(v.Id))
             .ToListAsync(ct);
 
-        return vacancies
-            .Select(v => new { Vacancy = v, Result = ResumeScorer.Evaluate(resume.Text, request.YearsOfExperience, v.Requirements) })
+        var matches = vacancies
+            .Select(v => new { Vacancy = v, Result = ResumeScorer.Evaluate(resume.Text, years.Value, v.Requirements) })
             .Where(x => x.Result.Verdict == ScreeningVerdict.Passed)
             .OrderByDescending(x => x.Result.Score)
             .Select(x => VacancyMatchResponse.From(x.Vacancy))
             .ToList();
+
+        return new FindMatchesResponse(years, ExperienceRequired: false, phoneFound, matches);
     }
 
     // Возвращает id вакансий, на которые кандидат уже откликался, — их в подборе не показываем.

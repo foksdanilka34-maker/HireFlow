@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using HireFlow.Api.Common;
+using HireFlow.Api.Security;
 using HireFlow.Application.Candidates;
 using HireFlow.Application.Matching;
 using Microsoft.AspNetCore.Mvc;
@@ -9,7 +10,7 @@ namespace HireFlow.Api.Candidates;
 public record FindMatchesForm
 {
     [Range(0, 50)]
-    public int YearsOfExperience { get; init; }
+    public int? YearsOfExperience { get; init; }
 
     [Required]
     public IFormFile File { get; init; } = null!;
@@ -20,7 +21,7 @@ public static class CandidateEndpoints
     // Регистрирует HTTP-маршруты /candidates.
     public static void MapCandidateEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/candidates");
+        var group = app.MapGroup("/candidates").RequireBotApiKey();
 
         group.MapGet("/{telegramId:long:min(1)}", (long telegramId, ICandidateService service, CancellationToken ct) =>
             service.GetAsync(telegramId, ct));

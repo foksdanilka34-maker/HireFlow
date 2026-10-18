@@ -27,9 +27,14 @@ public class Notification
         CreatedAt = DateTime.UtcNow;
     }
 
-    // Отмечает уведомление отправленным.
+    // Отмечает уведомление отправленным: повторное подтверждение игнорируется, отменённое или проваленное нельзя.
     public void MarkSent()
     {
+        if (Status == NotificationStatus.Sent)
+            return;
+        if (Status != NotificationStatus.Pending)
+            throw new DomainException("Only a pending notification can be marked as sent.");
+
         Status = NotificationStatus.Sent;
         SentAt = DateTime.UtcNow;
     }

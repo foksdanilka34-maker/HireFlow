@@ -15,9 +15,10 @@ public class Candidate
     // Нужен EF Core для создания объекта при чтении из БД.
     private Candidate() { }
 
-    // Создаёт кандидата. Id выдаст база при сохранении.
+    // Создаёт кандидата. Id (UUIDv7) выдаётся сразу, чтобы отклик можно было сохранить вместе с кандидатом.
     public Candidate(long telegramId, string name, string phone)
     {
+        Id = Guid.CreateVersion7();
         TelegramId = telegramId;
         Name = name.Trim();
         Phone = NormalizePhone(phone);
@@ -33,7 +34,9 @@ public class Candidate
         UpdatedAt = DateTime.UtcNow;
     }
 
-    // Приводит номер из Telegram к формату E.164: Telegram иногда присылает его без «+».
+    // Приводит номер к формату E.164, невалидный номер — DomainException.
     private static string NormalizePhone(string phone) =>
-        phone.StartsWith('+') ? phone : $"+{phone}";
+        PhoneNumber.TryNormalize(phone, out var e164)
+            ? e164
+            : throw new DomainException("Phone number is not valid.");
 }

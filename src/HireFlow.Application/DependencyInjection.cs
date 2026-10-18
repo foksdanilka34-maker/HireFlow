@@ -1,3 +1,4 @@
+using HireFlow.Application.BotSessions;
 using HireFlow.Application.Candidates;
 using HireFlow.Application.JobApplications;
 using HireFlow.Application.Matching;
@@ -19,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<IResumeReader, ResumeReader>();
         services.AddScoped<IVacancyMatchingService, VacancyMatchingService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IBotSessionService, BotSessionService>();
         return services;
     }
 }

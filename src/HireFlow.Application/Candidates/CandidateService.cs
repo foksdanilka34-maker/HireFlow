@@ -18,6 +18,9 @@ public class CandidateService(IAppDbContext db) : ICandidateService
 
     public async Task<CandidateResponse> UpsertAsync(long telegramId, CandidateRequest request, CancellationToken ct)
     {
+        if (!PhoneNumber.TryNormalize(request.Phone, out _))
+            throw new BadRequestException("Phone number is not valid.");
+
         var candidate = await db.Candidates.FirstOrDefaultAsync(c => c.TelegramId == telegramId, ct);
 
         if (candidate is null)
@@ -45,6 +48,7 @@ public class CandidateService(IAppDbContext db) : ICandidateService
             select new
             {
                 a.Id,
+                a.VacancyId,
                 v.Title,
                 a.Status,
                 RejectionSent = a.Notifications.Any(n =>
@@ -56,7 +60,7 @@ public class CandidateService(IAppDbContext db) : ICandidateService
 
         return applications
             .Select(a => new CandidateApplicationResponse(
-                a.Id, a.Title, ToCandidateStatus(a.Status, a.RejectionSent), a.CreatedAt))
+                a.Id, a.VacancyId, a.Title, ToCandidateStatus(a.Status, a.RejectionSent), a.CreatedAt))
             .ToList();
     }
 

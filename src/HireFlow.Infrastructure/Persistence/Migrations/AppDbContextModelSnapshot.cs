@@ -23,6 +23,47 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("HireFlow.Domain.BotSessions.BotSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("uuidv7()");
+
+                    b.Property<string>("Draft")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("draft");
+
+                    b.Property<Guid?>("LinkedVacancyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("linked_vacancy_id");
+
+                    b.Property<string>("Step")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("step");
+
+                    b.Property<long>("TelegramId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("telegram_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_bot_sessions");
+
+                    b.HasIndex("TelegramId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_bot_sessions_telegram_id");
+
+                    b.ToTable("bot_sessions", (string)null);
+                });
+
             modelBuilder.Entity("HireFlow.Domain.Candidates.Candidate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -172,6 +213,12 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("years_of_experience");
 
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.ComplexProperty(typeof(Dictionary<string, object>), "Screening", "HireFlow.Domain.JobApplications.JobApplication.Screening#ScreeningResult", b1 =>
                         {
                             b1.IsRequired();
@@ -255,6 +302,12 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("type");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id")
                         .HasName("pk_notifications");

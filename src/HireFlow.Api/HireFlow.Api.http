@@ -2,6 +2,7 @@
 @id = подставь-id-вакансии-из-ответа-на-создание
 @applicationId = подставь-id-отклика
 @notificationId = подставь-id-уведомления
+@botKey = подставь-значение-BotApi:ApiKey-из-user-secrets
 
 ### Проверка, что API запущен
 GET {{host}}/health
@@ -45,15 +46,19 @@ Content-Type: application/json
 
 ### Список (открытые и закрытые, без архива)
 GET {{host}}/vacancies
+X-Api-Key: {{botKey}}
 
 ### Только открытые (так будет спрашивать бот)
 GET {{host}}/vacancies?status=open
+X-Api-Key: {{botKey}}
 
 ### Только архив
 GET {{host}}/vacancies?status=archived
+X-Api-Key: {{botKey}}
 
 ### Вакансия по id
 GET {{host}}/vacancies/{{id}}
+X-Api-Key: {{botKey}}
 
 ### Изменить вакансию (PUT заменяет вакансию целиком)
 PUT {{host}}/vacancies/{{id}}
@@ -88,8 +93,9 @@ POST {{host}}/vacancies/{{id}}/unarchive
 ### Удалить
 DELETE {{host}}/vacancies/{{id}}
 
-### Кандидат: создать или обновить (бот вызывает, когда кандидат поделился номером)
+### Кандидат: создать или обновить (бот кандидатов так не создаёт: кандидат появляется при первом отклике)
 PUT {{host}}/candidates/123456789
+X-Api-Key: {{botKey}}
 Content-Type: application/json
 
 {
@@ -99,9 +105,13 @@ Content-Type: application/json
 
 ### Кандидат по Telegram ID
 GET {{host}}/candidates/123456789
+X-Api-Key: {{botKey}}
 
-### Подбор вакансий под резюме (ничего не сохраняет)
+### Подбор вакансий под резюме (ничего не сохраняет). yearsOfExperience необязателен: без него опыт ищется в резюме,
+### не нашёлся — ответ с experienceRequired = true и пустым списком
+### Ответ: { yearsOfExperience, experienceRequired, phoneFound, vacancies: [...] }
 POST {{host}}/candidates/123456789/matches
+X-Api-Key: {{botKey}}
 Content-Type: multipart/form-data; boundary=hireflow
 
 --hireflow
@@ -115,14 +125,20 @@ Content-Type: application/pdf
 < ./resume.pdf
 --hireflow--
 
-### Отклик: файл резюме + вакансия + опыт (multipart-форма, как будет слать бот)
+### Отклик: файл резюме + вакансия + опыт (multipart-форма, как слать бот). Новый кандидат создаётся здесь:
+### name обязателен, phone необязателен (иначе берётся из резюме, не нашёлся — 400)
 POST {{host}}/applications
+X-Api-Key: {{botKey}}
 Content-Type: multipart/form-data; boundary=hireflow
 
 --hireflow
 Content-Disposition: form-data; name="telegramId"
 
 123456789
+--hireflow
+Content-Disposition: form-data; name="name"
+
+Иван Петров
 --hireflow
 Content-Disposition: form-data; name="vacancyId"
 
@@ -161,19 +177,38 @@ Content-Type: application/json
 
 ### Мои отклики (так их видит кандидат: in_review / invited / rejected)
 GET {{host}}/candidates/123456789/applications
+X-Api-Key: {{botKey}}
 
 ### Бот: уведомления, которым пора уйти кандидатам
 GET {{host}}/internal/notifications/due
+X-Api-Key: {{botKey}}
 
 ### Бот: уведомление отправлено
 POST {{host}}/internal/notifications/{{notificationId}}/sent
+X-Api-Key: {{botKey}}
 
 ### Бот: отправить не удалось — повтор через 2, 4, 8… минут, после 5 попыток уведомление станет ошибочным
 POST {{host}}/internal/notifications/{{notificationId}}/failed
+X-Api-Key: {{botKey}}
 Content-Type: application/json
 
 {
   "error": "Telegram API timeout"
+}
+
+### Бот: состояние диалога (сессия)
+GET {{host}}/bot-sessions/123456789
+X-Api-Key: {{botKey}}
+
+###
+PUT {{host}}/bot-sessions/123456789
+X-Api-Key: {{botKey}}
+Content-Type: application/json
+
+{
+  "step": "awaiting_resume",
+  "linkedVacancyId": null,
+  "draft": {}
 }
 
 ### Ошибки валидации — 400 со списком всех ошибок

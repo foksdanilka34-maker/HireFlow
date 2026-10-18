@@ -1,4 +1,5 @@
 using HireFlow.Api.Common;
+using HireFlow.Api.Security;
 using HireFlow.Application.Vacancies;
 using HireFlow.Domain.Vacancies;
 
@@ -14,10 +15,12 @@ public static class VacancyEndpoints
         group.MapGet("/", async (string? status, IVacancyService service, CancellationToken ct) =>
             EnumQuery.TryParse<VacancyStatus>(status, out var parsed)
                 ? Results.Ok(await service.GetAllAsync(parsed, ct))
-                : Results.Problem($"Unknown status '{status}'.", statusCode: StatusCodes.Status400BadRequest));
+                : Results.Problem($"Unknown status '{status}'.", statusCode: StatusCodes.Status400BadRequest))
+            .RequireBotApiKey();
 
         group.MapGet("/{id:guid}", (Guid id, IVacancyService service, CancellationToken ct) =>
-            service.GetAsync(id, ct));
+            service.GetAsync(id, ct))
+            .RequireBotApiKey();
 
         group.MapPost("/", async (VacancyRequest request, IVacancyService service, CancellationToken ct) =>
         {

@@ -1,3 +1,4 @@
+using HireFlow.Domain.BotSessions;
 using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
 using HireFlow.Domain.Notifications;
@@ -12,6 +13,7 @@ public interface IAppDbContext
     DbSet<Candidate> Candidates { get; }
     DbSet<JobApplication> JobApplications { get; }
     DbSet<Notification> Notifications { get; }
+    DbSet<BotSession> BotSessions { get; }
 
     // Сохраняет все изменения в базу одной транзакцией.
     Task<int> SaveChangesAsync(CancellationToken ct = default);

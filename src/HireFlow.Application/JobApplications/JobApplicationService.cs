@@ -1,6 +1,8 @@
 using HireFlow.Application.Common;
 using HireFlow.Application.Notifications;
 using HireFlow.Application.Resumes;
+using HireFlow.Domain;
+using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
 using HireFlow.Domain.Screening;
 using Microsoft.EntityFrameworkCore;
@@ -19,14 +21,25 @@ public class JobApplicationService(
 
     public async Task<ApplicationResponse> CreateAsync(CreateApplicationRequest request, CancellationToken ct)
     {
-        var candidate = await db.Candidates.FirstOrDefaultAsync(c => c.TelegramId == request.TelegramId, ct)
-            ?? throw new NotFoundException($"Candidate with Telegram ID {request.TelegramId} not found.");
+        var candidate = await db.Candidates.FirstOrDefaultAsync(c => c.TelegramId == request.TelegramId, ct);
 
         var vacancy = await db.Vacancies.FirstOrDefaultAsync(v => v.Id == request.VacancyId, ct)
             ?? throw new NotFoundException($"Vacancy {request.VacancyId} not found.");
         vacancy.EnsureAcceptsApplications();
 
+        if (candidate is not null
+            && await db.JobApplications.AnyAsync(a => a.CandidateId == candidate.Id && a.VacancyId == vacancy.Id, ct))
+            throw new DomainException("Candidate has already applied to this vacancy.");
+
         var resume = resumeReader.Read(request.FileContent);
+
+        // Нового кандидата создаём вместе с откликом: имя из запроса, телефон — введённый или найденный в резюме.
+        if (candidate is null)
+        {
+            candidate = CreateCandidate(request, resume.Text);
+            db.Candidates.Add(candidate);
+        }
+
         var extension = resume.Format.ToString().ToLowerInvariant();
         var fileKey = await fileStorage.SaveAsync(request.FileContent, extension, ct);
 
@@ -46,6 +59,30 @@ public class JobApplicationService(
         await db.SaveChangesAsync(ct);
 
         return ApplicationResponse.From(application);
+    }
+
+    // Собирает нового кандидата из запроса и резюме; нет имени или телефона — BadRequestException.
+    private static Candidate CreateCandidate(CreateApplicationRequest request, string resumeText)
+    {
+        var name = request.Name?.Trim();
+        if (string.IsNullOrEmpty(name))
+            throw new BadRequestException("Name is required for a new candidate.");
+        if (name.Length > Candidate.NameMaxLength)
+            throw new BadRequestException($"Name must not exceed {Candidate.NameMaxLength} characters.");
+
+        string phone;
+        if (!string.IsNullOrWhiteSpace(request.Phone))
+        {
+            if (!PhoneNumber.TryNormalize(request.Phone, out phone))
+                throw new BadRequestException("Phone number is not valid.");
+        }
+        else
+        {
+            phone = ResumeFacts.FindPhone(resumeText)
+                ?? throw new BadRequestException("Phone number is required: it was not found in the resume.");
+        }
+
+        return new Candidate(request.TelegramId, name, phone);
     }
 
     public async Task<ApplicationResponse> GetAsync(Guid id, CancellationToken ct)

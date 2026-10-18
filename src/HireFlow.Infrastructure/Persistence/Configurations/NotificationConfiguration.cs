@@ -12,6 +12,9 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         builder.HasKey(n => n.Id);
         builder.Property(n => n.Id).HasDefaultValueSql("uuidv7()");
 
+        // Токен оптимистичной блокировки на системной колонке PostgreSQL xmin (в таблице не создаётся).
+        builder.Property<uint>("xmin").IsRowVersion();
+
         builder.Property(n => n.Type)
             .HasConversion(new SnakeCaseEnumConverter<NotificationType>())
             .HasMaxLength(20);

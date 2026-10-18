@@ -32,4 +32,4 @@ public enum CandidateStatus
     Rejected,
 }
 
-public record CandidateApplicationResponse(Guid Id, string VacancyTitle, CandidateStatus Status, DateTime CreatedAt);
+public record CandidateApplicationResponse(Guid Id, Guid VacancyId, string VacancyTitle, CandidateStatus Status, DateTime CreatedAt);
