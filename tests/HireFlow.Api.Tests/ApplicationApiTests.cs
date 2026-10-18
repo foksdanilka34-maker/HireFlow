@@ -138,17 +138,6 @@ public class ApplicationApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task Create_UnknownCandidateReturns404()
-    {
-        var skill = Unique("s");
-        var vacancy = await CreateVacancyAsync([skill]);
-
-        var response = await ApplyAsync(NewTelegramId(), vacancy.Id, ResumeWith(skill));
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
-    [Fact]
     public async Task Create_UnknownVacancyReturns404()
     {
         var candidate = await CreateCandidateAsync();

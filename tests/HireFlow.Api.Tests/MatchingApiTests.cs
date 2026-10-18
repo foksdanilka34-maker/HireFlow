@@ -11,7 +11,7 @@ public class MatchingApiTests(ApiAppFixture app) : ApiTestBase(app)
     {
         var response = await MatchesAsync(telegramId, resume, years);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return (await ReadAsync<List<VacancyMatchResponse>>(response)).Select(m => m.Id).ToList();
+        return (await ReadAsync<FindMatchesResponse>(response)).Vacancies.Select(m => m.Id).ToList();
     }
 
     [Fact]
@@ -26,7 +26,7 @@ public class MatchingApiTests(ApiAppFixture app) : ApiTestBase(app)
         var response = await MatchesAsync(NewTelegramId(), resume);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var ids = (await ReadAsync<List<VacancyMatchResponse>>(response)).Select(m => m.Id).ToList();
+        var ids = (await ReadAsync<FindMatchesResponse>(response)).Vacancies.Select(m => m.Id).ToList();
         Assert.Equal(
             [score100.Id, score90.Id, score80.Id],
             ids.Where(id => id == score100.Id || id == score90.Id || id == score80.Id).ToList());
@@ -40,7 +40,7 @@ public class MatchingApiTests(ApiAppFixture app) : ApiTestBase(app)
 
         var response = await MatchesAsync(NewTelegramId(), ResumeWith(skill));
 
-        var match = (await ReadAsync<List<VacancyMatchResponse>>(response)).Single(m => m.Id == vacancy.Id);
+        var match = (await ReadAsync<FindMatchesResponse>(response)).Vacancies.Single(m => m.Id == vacancy.Id);
         Assert.Equal(vacancy.Title, match.Title);
         Assert.Equal("QA", match.Direction);
         Assert.Equal("Тестовая вакансия", match.Description);
@@ -195,5 +195,58 @@ public class MatchingApiTests(ApiAppFixture app) : ApiTestBase(app)
         var response = await MatchesAsync(NewTelegramId(), ResumeWith("x"), years: 51);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // Запрашивает подбор без поля yearsOfExperience: опыт должен найтись в резюме.
+    private Task<HttpResponseMessage> MatchesWithoutYearsAsync(long telegramId, byte[] file, string fileName = "resume.docx")
+    {
+        var form = new MultipartFormDataContent { { new ByteArrayContent(file), "file", fileName } };
+        return Client.PostAsync($"/candidates/{telegramId}/matches", form);
+    }
+
+    [Theory]
+    [InlineData("Опыт работы — 5 лет 3 месяца", 5, true)]
+    [InlineData("Опыт работы — 2 года", 2, false)]
+    public async Task Matches_WithoutYearsTakesExperienceFromResumeAndUsesItForMatching(string statement, int years, bool matched)
+    {
+        var skill = Unique("s");
+        var vacancy = await CreateVacancyAsync([skill], minYears: 5);
+
+        var response = await MatchesWithoutYearsAsync(NewTelegramId(), ResumeFactory.Docx(statement, $"Навыки: {skill}"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await ReadAsync<FindMatchesResponse>(response);
+        Assert.Equal(years, result.YearsOfExperience);
+        Assert.False(result.ExperienceRequired);
+        Assert.Equal(matched, result.Vacancies.Any(v => v.Id == vacancy.Id));
+    }
+
+    [Fact]
+    public async Task Matches_WithoutYearsAndWithoutStatementRequiresExperienceAndReturnsNothing()
+    {
+        var skill = Unique("s");
+        await CreateVacancyAsync([skill]);
+
+        var response = await MatchesWithoutYearsAsync(NewTelegramId(), ResumeFactory.Docx("Работал программистом", $"Навыки: {skill}"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await ReadAsync<FindMatchesResponse>(response);
+        Assert.Null(result.YearsOfExperience);
+        Assert.True(result.ExperienceRequired);
+        Assert.Empty(result.Vacancies);
+    }
+
+    [Theory]
+    [InlineData("Тел.: +7 (999) 123-45-67", true)]
+    [InlineData("Контакты: ivan@example.com, 2019–2023", false)]
+    public async Task Matches_ReportsPhoneFoundWithoutReturningThePhone(string contacts, bool expected)
+    {
+        var response = await MatchesWithoutYearsAsync(
+            NewTelegramId(), ResumeFactory.Docx("Опыт работы: 5 лет", contacts));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.Equal(expected, (await ReadAsync<FindMatchesResponse>(response)).PhoneFound);
+        Assert.DoesNotContain("9991234567", raw);
     }
 }

@@ -1,9 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using HireFlow.Api.BotSessions;
 using HireFlow.Api.Candidates;
 using HireFlow.Api.Errors;
 using HireFlow.Api.JobApplications;
 using HireFlow.Api.Notifications;
+using HireFlow.Api.Security;
 using HireFlow.Api.Vacancies;
 using HireFlow.Application;
 using HireFlow.Application.Notifications;
@@ -15,6 +17,9 @@ var connectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("Connection string 'ConnectionStrings:Postgres' is not set.");
 var storagePath = builder.Configuration["Storage:LocalPath"]
     ?? throw new InvalidOperationException("Storage path 'Storage:LocalPath' is not set.");
+var botApiKey = builder.Configuration[$"{BotApiKeyOptions.SectionName}:{nameof(BotApiKeyOptions.ApiKey)}"];
+if (string.IsNullOrWhiteSpace(botApiKey))
+    throw new InvalidOperationException("Bot API key 'BotApi:ApiKey' is not set (use user secrets or env BotApi__ApiKey).");
 
 builder.Services.AddOpenApi();
 builder.Services.AddValidation();
@@ -24,6 +29,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower)));
 
 builder.Services.Configure<NotificationOptions>(builder.Configuration.GetSection(NotificationOptions.SectionName));
+builder.Services.Configure<BotApiKeyOptions>(builder.Configuration.GetSection(BotApiKeyOptions.SectionName));
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(connectionString, storagePath);
 
@@ -42,5 +48,6 @@ app.MapVacancyEndpoints();
 app.MapCandidateEndpoints();
 app.MapJobApplicationEndpoints();
 app.MapNotificationEndpoints();
+app.MapBotSessionEndpoints();
 
 app.Run();

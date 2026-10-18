@@ -3,10 +3,10 @@
 - Тесты: `dotnet test`
 - Один проект или тест: `dotnet test tests/<Проект>.Tests --filter "FullyQualifiedName~<Имя>"`
 - Команды запускаются из корня (решение `HireFlow.slnx`). Интеграционным тестам нужен запущенный Docker.
-- Миграции EF Core (сначала `dotnet tool restore`; строка подключения не хранится в репозитории, поэтому для команд без БД
-  достаточно фиктивной):
-  `ConnectionStrings__Postgres="Host=localhost;Database=hireflow;Username=hireflow;Password=x" dotnet ef migrations add <Имя> --project src/HireFlow.Infrastructure --startup-project src/HireFlow.Api --output-dir Persistence/Migrations`
-- Проверка, что модель и миграции синхронны: та же строка подключения + `dotnet ef migrations has-pending-model-changes --project src/HireFlow.Infrastructure --startup-project src/HireFlow.Api`
+- Миграции EF Core (сначала `dotnet tool restore`; строка подключения и ключ бота не хранятся в репозитории, поэтому
+  для команд без БД достаточно фиктивных):
+  `ConnectionStrings__Postgres="Host=localhost;Database=hireflow;Username=hireflow;Password=x" BotApi__ApiKey=x dotnet ef migrations add <Имя> --project src/HireFlow.Infrastructure --startup-project src/HireFlow.Api --output-dir Persistence/Migrations`
+- Проверка, что модель и миграции синхронны: те же переменные + `dotnet ef migrations has-pending-model-changes --project src/HireFlow.Infrastructure --startup-project src/HireFlow.Api`
 
 ## Тесты
 - Фреймворк: xUnit, тесты в tests/<Проект>.Tests

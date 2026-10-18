@@ -45,6 +45,7 @@ public class CandidateService(IAppDbContext db) : ICandidateService
             select new
             {
                 a.Id,
+                a.VacancyId,
                 v.Title,
                 a.Status,
                 RejectionSent = a.Notifications.Any(n =>
@@ -56,7 +57,7 @@ public class CandidateService(IAppDbContext db) : ICandidateService
 
         return applications
             .Select(a => new CandidateApplicationResponse(
-                a.Id, a.Title, ToCandidateStatus(a.Status, a.RejectionSent), a.CreatedAt))
+                a.Id, a.VacancyId, a.Title, ToCandidateStatus(a.Status, a.RejectionSent), a.CreatedAt))
             .ToList();
     }
 

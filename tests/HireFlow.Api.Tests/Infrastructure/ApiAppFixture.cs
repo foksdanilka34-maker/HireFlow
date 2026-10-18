@@ -21,11 +21,20 @@ public class ApiAppFixture : IAsyncLifetime
         Directory.CreateDirectory(StoragePath);
 
         _factory = new ApiFactory(ConnectionString, StoragePath);
-        Client = _factory.CreateClient();
+        Client = CreateClient(ApiFactory.BotApiKey);
 
         await using var scope = Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.MigrateAsync();
+    }
+
+    // Создаёт клиент с заданным ключом бота в X-Api-Key; null — без заголовка.
+    public HttpClient CreateClient(string? apiKey)
+    {
+        var client = _factory.CreateClient();
+        if (apiKey is not null)
+            client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
+        return client;
     }
 
     public async Task DisposeAsync()

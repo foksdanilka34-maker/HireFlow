@@ -113,4 +113,20 @@ public class CandidateApplicationsApiTests(ApiAppFixture app) : ApiTestBase(app)
 
         Assert.Empty(await GetApplicationsAsync(candidate.TelegramId));
     }
+
+    [Fact]
+    public async Task Applications_ContainVacancyIdOfEachApplication()
+    {
+        var telegramId = NewTelegramId();
+        var candidate = await CreateCandidateAsync(telegramId);
+        var skill = Unique("s");
+        var (first, second) = (await CreateVacancyAsync([skill]), await CreateVacancyAsync([skill]));
+        var a1 = await ApplyOkAsync(candidate.TelegramId, first.Id, ResumeWith(skill));
+        var a2 = await ApplyOkAsync(candidate.TelegramId, second.Id, ResumeWith(skill));
+
+        var items = await GetApplicationsAsync(telegramId);
+
+        Assert.Equal(first.Id, items.Single(i => i.Id == a1.Id).VacancyId);
+        Assert.Equal(second.Id, items.Single(i => i.Id == a2.Id).VacancyId);
+    }
 }

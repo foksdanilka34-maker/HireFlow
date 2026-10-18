@@ -9,7 +9,9 @@ public record CreateApplicationRequest(
     Guid VacancyId,
     int YearsOfExperience,
     string FileName,
-    byte[] FileContent);
+    byte[] FileContent,
+    string? Name = null,
+    string? Phone = null);
 
 public enum RecruiterDecision
 {

@@ -9,7 +9,8 @@ snapshot="$(git rev-parse --git-dir)/pipeline-snapshot"
 
 # Хэши текущих файлов, отсортированные по пути.
 current() {
-    git ls-files -co --exclude-standard -z | xargs -0 shasum -a 256 2>/dev/null | sort -k2
+    # Удалённые, но ещё отслеживаемые файлы git перечисляет, а shasum на них падает — пропускаем их.
+    git ls-files -co --exclude-standard -z | { xargs -0 shasum -a 256 2>/dev/null || true; } | sort -k2
 }
 
 case "${1:-}" in

@@ -1,3 +1,4 @@
+using HireFlow.Api.Security;
 using HireFlow.Application.Notifications;
 
 namespace HireFlow.Api.Notifications;
@@ -7,7 +8,7 @@ public static class NotificationEndpoints
     // Регистрирует служебные маршруты /internal/notifications для бота.
     public static void MapNotificationEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/internal/notifications");
+        var group = app.MapGroup("/internal/notifications").RequireBotApiKey();
 
         group.MapGet("/due", (INotificationService service, CancellationToken ct) =>
             service.GetDueAsync(ct));

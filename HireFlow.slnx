@@ -9,6 +9,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/HireFlow.Api.Tests/HireFlow.Api.Tests.csproj" />
     <Project Path="tests/HireFlow.Application.Tests/HireFlow.Application.Tests.csproj" />
+    <Project Path="tests/HireFlow.Bot.Tests/HireFlow.Bot.Tests.csproj" />
     <Project Path="tests/HireFlow.Domain.Tests/HireFlow.Domain.Tests.csproj" />
   </Folder>
 </Solution>
