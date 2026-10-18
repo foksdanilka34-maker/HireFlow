@@ -24,7 +24,6 @@ public static class BotTexts
     public const string NoMoreVacancies = "Это все вакансии из списка.";
     public const string ClosedLinked = "Набор на эту вакансию закрыт. Пришлите резюме — подберём другие.";
     public const string ClosedVacancy = "Набор на эту вакансию уже закрыт.";
-    public const string UnavailableVacancy = "(вакансия недоступна)";
 
     // Приглашение прислать резюме для вакансии по ссылке.
     public static string LinkedWelcome(string title) => $"Вы откликаетесь на «{title}». Пришлите резюме в PDF или DOCX.";

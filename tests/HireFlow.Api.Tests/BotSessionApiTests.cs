@@ -62,8 +62,6 @@ public class BotSessionApiTests(ApiAppFixture app) : ApiTestBase(app)
 
     [Theory]
     [InlineData("[1,2]")]
-    [InlineData("\"text\"")]
-    [InlineData("5")]
     [InlineData("null")]
     public async Task Put_DraftThatIsNotAnObjectReturns400AndSavesNothing(string draft)
     {

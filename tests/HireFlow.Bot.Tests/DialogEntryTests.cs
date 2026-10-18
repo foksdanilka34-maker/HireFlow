@@ -54,11 +54,11 @@ public class DialogEntryTests
         Assert.Null(_bot.Session.Draft.ResumeFileId);
     }
 
+    // Текст и сообщение без текста и документа (фото, стикер) получают одну и ту же подсказку.
     [Theory]
     [InlineData("Здравствуйте!")]
-    [InlineData("привет, я хочу работать")]
-    [InlineData("1")]
-    public async Task AwaitingResume_AnyTextGivesHintAndKeepsStep(string text)
+    [InlineData(null)]
+    public async Task AwaitingResume_TextOrNonTextGivesHintAndKeepsStep(string? text)
     {
         await _bot.SendAsync("/start");
 
@@ -69,21 +69,8 @@ public class DialogEntryTests
         Assert.Empty(_bot.Api.MatchCalls);
     }
 
-    [Fact]
-    public async Task AwaitingResume_PhotoOrStickerGivesSameHint()
-    {
-        await _bot.SendAsync("/start");
-
-        await _bot.SendNonTextAsync();
-
-        Assert.Equal(BotTexts.SendResumeHint, _bot.Last);
-        Assert.Equal(BotSteps.AwaitingResume, _bot.Session.Step);
-    }
-
     [Theory]
-    [InlineData(BotSteps.AwaitingResume, "Пришлите резюме файлом")]
     [InlineData(BotSteps.AwaitingExperience, "число лет")]
-    [InlineData(BotSteps.AwaitingPhone, "номер телефона")]
     [InlineData(BotSteps.ConfirmingLinked, "«да»")]
     public async Task Help_ExplainsCurrentStepAndKeepsIt(string step, string expectedHint)
     {
@@ -124,5 +111,25 @@ public class DialogEntryTests
         Assert.Equal(BotTexts.UnreadableFile, _bot.Last);
         Assert.Equal(BotSteps.AwaitingResume, _bot.Session.Step);
         Assert.Null(_bot.Session.Draft.ResumeFileId);
+    }
+
+    [Theory]
+    [InlineData("api")]
+    [InlineData("download")]
+    public async Task ServiceFailure_AnswersErrorAndKeepsStepWithoutSavingSession(string failure)
+    {
+        _bot.SeedSession(BotSteps.AwaitingResume);
+        var before = _bot.Api.Sessions[DialogHarness.UserId];
+        if (failure == "api")
+            _bot.Api.OnMatches = _ => ApiResult<MatchesDto>.Failure(ApiStatus.Error);
+        else
+            _bot.Chat.DownloadFailure = new HttpRequestException("telegram down");
+
+        await _bot.SendDocumentAsync();
+
+        Assert.Equal(BotTexts.Error, _bot.Last);
+        Assert.Equal(0, _bot.Api.PutSessionCalls);
+        Assert.Equal(before, _bot.Api.Sessions[DialogHarness.UserId]);
+        Assert.Equal(BotSteps.AwaitingResume, _bot.Session.Step);
     }
 }

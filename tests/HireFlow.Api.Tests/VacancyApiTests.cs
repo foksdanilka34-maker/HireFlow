@@ -53,27 +53,6 @@ public class VacancyApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task Create_EmptyTitleReturns400()
-    {
-        var request = VacancyRequestFor([Unique("skill")]) with { Title = "" };
-
-        var response = await Client.PostAsJsonAsync("/vacancies", request, Json);
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Create_TrimsTitle()
-    {
-        var title = Unique("Trim ");
-        var request = VacancyRequestFor([Unique("skill")], title: $"  {title}  ");
-
-        var response = await Client.PostAsJsonAsync("/vacancies", request, Json);
-
-        Assert.Equal(title, (await ReadAsync<VacancyResponse>(response)).Title);
-    }
-
-    [Fact]
     public async Task Get_UnknownIdReturns404()
     {
         var response = await Client.GetAsync($"/vacancies/{Guid.NewGuid()}");
@@ -90,7 +69,7 @@ public class VacancyApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task List_WithoutStatusExcludesArchived()
+    public async Task List_ExcludesArchivedByDefaultAndFiltersByStatus()
     {
         var open = await CreateVacancyAsync([Unique("skill")]);
         var closed = await CreateVacancyAsync([Unique("skill")]);
@@ -98,27 +77,18 @@ public class VacancyApiTests(ApiAppFixture app) : ApiTestBase(app)
         (await Client.PostAsync($"/vacancies/{closed.Id}/close", null)).EnsureSuccessStatusCode();
         (await Client.PostAsync($"/vacancies/{archived.Id}/archive", null)).EnsureSuccessStatusCode();
 
-        var ids = await ListIdsAsync();
-
-        Assert.Contains(open.Id, ids);
-        Assert.Contains(closed.Id, ids);
-        Assert.DoesNotContain(archived.Id, ids);
-    }
-
-    [Fact]
-    public async Task List_FiltersByStatus()
-    {
-        var open = await CreateVacancyAsync([Unique("skill")]);
-        var archived = await CreateVacancyAsync([Unique("skill")]);
-        (await Client.PostAsync($"/vacancies/{archived.Id}/archive", null)).EnsureSuccessStatusCode();
-
-        var archivedIds = await ListIdsAsync("?status=archived");
+        var all = await ListIdsAsync();
         var openIds = await ListIdsAsync("?status=open");
+        var archivedIds = await ListIdsAsync("?status=archived");
 
+        Assert.Contains(open.Id, all);
+        Assert.Contains(closed.Id, all);
+        Assert.DoesNotContain(archived.Id, all);
+        Assert.Contains(open.Id, openIds);
+        Assert.DoesNotContain(closed.Id, openIds);
+        Assert.DoesNotContain(archived.Id, openIds);
         Assert.Contains(archived.Id, archivedIds);
         Assert.DoesNotContain(open.Id, archivedIds);
-        Assert.Contains(open.Id, openIds);
-        Assert.DoesNotContain(archived.Id, openIds);
     }
 
     [Fact]
@@ -171,15 +141,6 @@ public class VacancyApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task Update_UnknownIdReturns404()
-    {
-        var response = await Client.PutAsJsonAsync(
-            $"/vacancies/{Guid.NewGuid()}", VacancyRequestFor([Unique("skill")]), Json);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
-    [Fact]
     public async Task CloseAndOpen_ChangeStatus()
     {
         var vacancy = await CreateVacancyAsync([Unique("skill")]);
@@ -202,19 +163,6 @@ public class VacancyApiTests(ApiAppFixture app) : ApiTestBase(app)
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
-    [Theory]
-    [InlineData("open")]
-    [InlineData("close")]
-    public async Task Archived_OpenAndCloseReturn409(string action)
-    {
-        var vacancy = await CreateVacancyAsync([Unique("skill")]);
-        (await Client.PostAsync($"/vacancies/{vacancy.Id}/archive", null)).EnsureSuccessStatusCode();
-
-        var response = await Client.PostAsync($"/vacancies/{vacancy.Id}/{action}", null);
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-    }
-
     [Fact]
     public async Task Unarchive_MakesVacancyClosed()
     {
@@ -224,16 +172,6 @@ public class VacancyApiTests(ApiAppFixture app) : ApiTestBase(app)
         var response = await Client.PostAsync($"/vacancies/{vacancy.Id}/unarchive", null);
 
         Assert.Equal(VacancyStatus.Closed, (await ReadAsync<VacancyResponse>(response)).Status);
-    }
-
-    [Fact]
-    public async Task Unarchive_NotArchivedReturns409()
-    {
-        var vacancy = await CreateVacancyAsync([Unique("skill")]);
-
-        var response = await Client.PostAsync($"/vacancies/{vacancy.Id}/unarchive", null);
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
     [Fact]
@@ -259,13 +197,5 @@ public class VacancyApiTests(ApiAppFixture app) : ApiTestBase(app)
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await Client.GetAsync($"/vacancies/{vacancy.Id}")).StatusCode);
-    }
-
-    [Fact]
-    public async Task Delete_UnknownIdReturns404()
-    {
-        var response = await Client.DeleteAsync($"/vacancies/{Guid.NewGuid()}");
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 }

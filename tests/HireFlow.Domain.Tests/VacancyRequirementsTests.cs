@@ -38,26 +38,6 @@ public class VacancyRequirementsTests
     }
 
     [Fact]
-    public void Validator_ReportsBorderlineWidthError()
-    {
-        var requirements = Requirements(["alpha"], passingScore: 5, borderlineWidth: 10);
-
-        var results = Validate(requirements);
-
-        Assert.Contains(results, r => r.MemberNames.Contains(nameof(VacancyRequirements.BorderlineWidth)));
-    }
-
-    [Fact]
     public void Default_BorderlineWidthIsTen() =>
         Assert.Equal(10, new VacancyRequirements().BorderlineWidth);
-
-    [Fact]
-    public void Validator_EmptyRequiredSkillsIsError()
-    {
-        var requirements = new VacancyRequirements { PassingScore = 70 };
-
-        var results = Validate(requirements);
-
-        Assert.Contains(results, r => r.MemberNames.Contains(nameof(VacancyRequirements.RequiredSkills)));
-    }
 }

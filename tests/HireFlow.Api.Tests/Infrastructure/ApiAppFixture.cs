@@ -7,12 +7,12 @@ namespace HireFlow.Api.Tests.Infrastructure;
 // Фикстура тестового класса: своя база с применёнными миграциями, своё приложение и своя папка хранилища.
 public class ApiAppFixture : IAsyncLifetime
 {
-    private ApiFactory _factory = null!;
+    private ApiFactory? _factory;
 
     public string ConnectionString { get; private set; } = null!;
     public string StoragePath { get; private set; } = null!;
     public HttpClient Client { get; private set; } = null!;
-    public IServiceProvider Services => _factory.Services;
+    public IServiceProvider Services => _factory!.Services;
 
     public async Task InitializeAsync()
     {
@@ -31,7 +31,7 @@ public class ApiAppFixture : IAsyncLifetime
     // Создаёт клиент с заданным ключом бота в X-Api-Key; null — без заголовка.
     public HttpClient CreateClient(string? apiKey)
     {
-        var client = _factory.CreateClient();
+        var client = _factory!.CreateClient();
         if (apiKey is not null)
             client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
         return client;
@@ -39,9 +39,16 @@ public class ApiAppFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        Client.Dispose();
-        await _factory.DisposeAsync();
-        if (Directory.Exists(StoragePath))
-            Directory.Delete(StoragePath, recursive: true);
+        try
+        {
+            Client?.Dispose();
+            if (_factory is not null)
+                await _factory.DisposeAsync();
+        }
+        finally
+        {
+            if (StoragePath is not null && Directory.Exists(StoragePath))
+                Directory.Delete(StoragePath, recursive: true);
+        }
     }
 }

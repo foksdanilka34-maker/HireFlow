@@ -18,6 +18,9 @@ public class CandidateService(IAppDbContext db) : ICandidateService
 
     public async Task<CandidateResponse> UpsertAsync(long telegramId, CandidateRequest request, CancellationToken ct)
     {
+        if (!PhoneNumber.TryNormalize(request.Phone, out _))
+            throw new BadRequestException("Phone number is not valid.");
+
         var candidate = await db.Candidates.FirstOrDefaultAsync(c => c.TelegramId == telegramId, ct);
 
         if (candidate is null)

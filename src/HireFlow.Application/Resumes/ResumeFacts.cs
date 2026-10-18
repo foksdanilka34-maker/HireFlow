@@ -14,13 +14,13 @@ public static partial class ResumeFacts
     private static readonly Regex[] ExperiencePatterns =
     [
         // «Опыт работы — 5 лет 3 месяца», «опыт работы: 5 лет», «опыт 5 лет», «опыт работы более 3 лет».
-        new(@"опыт(?:\s+работы)?\s*[:\-–—]?\s*(?:более\s+|свыше\s+|около\s+|от\s+)?(?<![\d])(\d{1,3})\s*\+?\s*(?:лет|года|год)(?![\p{L}\d])", Options),
+        new(@"(?<!\p{L})опыт(?:\s+работы)?\s*[:\-–—]?\s*(?:более\s+|свыше\s+|около\s+|от\s+)?(?<![\d])(\d{1,3})\s*\+?\s*(?:лет|года|год)(?![\p{L}\d])", Options),
         // «более 3 лет опыта», «3+ года опыта», «5 лет опыта».
         new(@"(?<![\d])(\d{1,3})\s*\+?\s*(?:лет|года|год)\s+опыта(?![\p{L}])", Options),
         // «5+ years of experience», «5 years of commercial experience».
         new(@"(?<![\d])(\d{1,3})\s*\+?\s*years?\s+of\s+(?:\p{L}+\s+)?experience(?![\p{L}])", Options),
         // «Experience: 5 years».
-        new(@"experience\s*[:\-–—]?\s*(?<![\d])(\d{1,3})\s*\+?\s*years?(?![\p{L}])", Options),
+        new(@"(?<!\p{L})experience\s*[:\-–—]?\s*(?<![\d])(\d{1,3})\s*\+?\s*years?(?![\p{L}])", Options),
     ];
 
     // Фрагмент, похожий на телефон: цифры с пробелами, дефисами, точками и скобками.

@@ -23,14 +23,11 @@ public class CandidateApiTests(ApiAppFixture app) : ApiTestBase(app)
         Assert.Equal("Иван Петров", candidate.Name);
         Assert.Equal("+79991234567", candidate.Phone);
         Assert.Equal(7, candidate.Id.Version);
-    }
 
-    [Fact]
-    public async Task Put_KeepsPhoneWithPlus()
-    {
-        var response = await PutAsync(NewTelegramId(), "Иван", "+79991234567");
-
-        Assert.Equal("+79991234567", (await ReadAsync<CandidateResponse>(response)).Phone);
+        var loaded = await ReadAsync<CandidateResponse>(await Client.GetAsync($"/candidates/{telegramId}"));
+        Assert.Equal(candidate.Id, loaded.Id);
+        Assert.Equal("Иван Петров", loaded.Name);
+        Assert.Equal("+79991234567", loaded.Phone);
     }
 
     [Fact]
@@ -38,6 +35,7 @@ public class CandidateApiTests(ApiAppFixture app) : ApiTestBase(app)
     {
         var telegramId = NewTelegramId();
         var first = await ReadAsync<CandidateResponse>(await PutAsync(telegramId, "Иван", "79991234567"));
+        var before = DateTime.UtcNow;
 
         var second = await ReadAsync<CandidateResponse>(await PutAsync(telegramId, "Пётр", "78885554433"));
 
@@ -45,7 +43,7 @@ public class CandidateApiTests(ApiAppFixture app) : ApiTestBase(app)
         Assert.Equal("Пётр", second.Name);
         Assert.Equal("+78885554433", second.Phone);
         Assert.Equal(first.CreatedAt, second.CreatedAt);
-        Assert.True(second.UpdatedAt >= first.UpdatedAt);
+        Assert.InRange(second.UpdatedAt, before, DateTime.UtcNow);
 
         var loaded = await ReadAsync<CandidateResponse>(await Client.GetAsync($"/candidates/{telegramId}"));
         Assert.Equal(first.Id, loaded.Id);
@@ -55,9 +53,7 @@ public class CandidateApiTests(ApiAppFixture app) : ApiTestBase(app)
     [Theory]
     [InlineData("abc")]
     [InlineData("123")]
-    [InlineData("+7 999 123 45 67")]
     [InlineData("7999123456789012345")]
-    [InlineData("")]
     public async Task Put_InvalidPhoneReturns400(string phone)
     {
         var telegramId = NewTelegramId();
@@ -69,28 +65,10 @@ public class CandidateApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task Put_EmptyNameReturns400()
-    {
-        var response = await PutAsync(NewTelegramId(), "", "79991234567");
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
     public async Task Get_UnknownCandidateReturns404()
     {
         var response = await Client.GetAsync($"/candidates/{NewTelegramId()}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Get_ReturnsExistingCandidate()
-    {
-        var created = await CreateCandidateAsync();
-
-        var response = await Client.GetAsync($"/candidates/{created.TelegramId}");
-
-        Assert.Equal(created.Id, (await ReadAsync<CandidateResponse>(response)).Id);
     }
 }

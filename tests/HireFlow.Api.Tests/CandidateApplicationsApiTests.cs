@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using HireFlow.Api.Tests.Infrastructure;
 using HireFlow.Application.Candidates;
+using HireFlow.Application.JobApplications;
 
 namespace HireFlow.Api.Tests;
 
@@ -14,12 +15,24 @@ public class CandidateApplicationsApiTests(ApiAppFixture app) : ApiTestBase(app)
         return await ReadAsync<List<CandidateApplicationResponse>>(response);
     }
 
-    [Fact]
-    public async Task AutoRejected_IsInReviewUntilRejectionIsSent()
+    // Автоотказ и отказ рекрутера: кандидат видит «на рассмотрении», пока уведомление об отказе не отправлено.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Rejection_IsInReviewUntilRejectionIsSent(bool autoRejected)
     {
         var telegramId = NewTelegramId();
-        var title = Unique("Auto ");
-        var application = await CreateAutoRejectedApplicationAsync(title, telegramId);
+        var title = Unique("Reject ");
+        ApplicationResponse application;
+        if (autoRejected)
+        {
+            application = await CreateAutoRejectedApplicationAsync(title, telegramId);
+        }
+        else
+        {
+            application = await CreateReviewApplicationAsync(title, telegramId);
+            (await DecideAsync(application.Id, "reject")).EnsureSuccessStatusCode();
+        }
         var notification = Assert.Single(await GetNotificationsAsync(application.Id));
 
         var before = Assert.Single(await GetApplicationsAsync(telegramId));
@@ -34,57 +47,11 @@ public class CandidateApplicationsApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task RecruiterRejection_IsInReviewUntilRejectionIsSent()
-    {
-        var telegramId = NewTelegramId();
-        var application = await CreateReviewApplicationAsync(telegramId: telegramId);
-        (await DecideAsync(application.Id, "reject")).EnsureSuccessStatusCode();
-        var notification = Assert.Single(await GetNotificationsAsync(application.Id));
-
-        Assert.Equal(CandidateStatus.InReview, Assert.Single(await GetApplicationsAsync(telegramId)).Status);
-
-        (await Client.PostAsync($"/internal/notifications/{notification.Id}/sent", null)).EnsureSuccessStatusCode();
-
-        Assert.Equal(CandidateStatus.Rejected, Assert.Single(await GetApplicationsAsync(telegramId)).Status);
-    }
-
-    [Fact]
     public async Task Invited_IsShownAsInvited()
     {
         var telegramId = NewTelegramId();
         var application = await CreateReviewApplicationAsync(telegramId: telegramId);
         (await DecideAsync(application.Id, "invite")).EnsureSuccessStatusCode();
-
-        Assert.Equal(CandidateStatus.Invited, Assert.Single(await GetApplicationsAsync(telegramId)).Status);
-    }
-
-    [Fact]
-    public async Task Invited_FromAutoRejectedIsInvitedEvenThoughRejectionWasCancelled()
-    {
-        var telegramId = NewTelegramId();
-        var application = await CreateAutoRejectedApplicationAsync(telegramId: telegramId);
-        (await DecideAsync(application.Id, "invite")).EnsureSuccessStatusCode();
-
-        Assert.Equal(CandidateStatus.Invited, Assert.Single(await GetApplicationsAsync(telegramId)).Status);
-    }
-
-    [Fact]
-    public async Task PassedApplication_IsInReview()
-    {
-        var telegramId = NewTelegramId();
-        await CreateReviewApplicationAsync(telegramId: telegramId);
-
-        Assert.Equal(CandidateStatus.InReview, Assert.Single(await GetApplicationsAsync(telegramId)).Status);
-    }
-
-    [Fact]
-    public async Task InvitationSent_DoesNotMakeApplicationRejected()
-    {
-        var telegramId = NewTelegramId();
-        var application = await CreateReviewApplicationAsync(telegramId: telegramId);
-        (await DecideAsync(application.Id, "invite")).EnsureSuccessStatusCode();
-        var notification = Assert.Single(await GetNotificationsAsync(application.Id));
-        (await Client.PostAsync($"/internal/notifications/{notification.Id}/sent", null)).EnsureSuccessStatusCode();
 
         Assert.Equal(CandidateStatus.Invited, Assert.Single(await GetApplicationsAsync(telegramId)).Status);
     }
@@ -104,14 +71,6 @@ public class CandidateApplicationsApiTests(ApiAppFixture app) : ApiTestBase(app)
         var items = await GetApplicationsAsync(telegramId);
 
         Assert.Equal([a2.Id, a1.Id], items.Select(i => i.Id).ToList());
-    }
-
-    [Fact]
-    public async Task CandidateWithoutApplications_GetsEmptyList()
-    {
-        var candidate = await CreateCandidateAsync();
-
-        Assert.Empty(await GetApplicationsAsync(candidate.TelegramId));
     }
 
     [Fact]

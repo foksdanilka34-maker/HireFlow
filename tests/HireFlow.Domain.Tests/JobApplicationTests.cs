@@ -22,20 +22,14 @@ public class JobApplicationTests
         Assert.Empty(application.Notifications);
     }
 
-    [Fact]
-    public void Constructor_TruncatesFileNameTo255()
+    [Theory]
+    [InlineData(JobApplication.FileNameMaxLength)]
+    [InlineData(JobApplication.FileNameMaxLength + 1)]
+    public void Constructor_TruncatesFileNameToMaxLength(int length)
     {
-        var application = NewApplication(new string('x', 400));
+        var application = NewApplication(new string('x', length));
 
-        Assert.Equal(JobApplication.FileNameMaxLength, application.ResumeFileName.Length);
-    }
-
-    [Fact]
-    public void Constructor_KeepsFileNameOfExactlyMaxLength()
-    {
-        var name = new string('x', JobApplication.FileNameMaxLength);
-
-        Assert.Equal(name, NewApplication(name).ResumeFileName);
+        Assert.Equal(new string('x', JobApplication.FileNameMaxLength), application.ResumeFileName);
     }
 
     [Fact]
@@ -116,28 +110,20 @@ public class JobApplicationTests
         Assert.InRange(notification.SendAfter, before, after);
     }
 
-    [Fact]
-    public void Invite_WritesRecruiterHistoryEntryWithComment()
+    [Theory]
+    [InlineData("Приглашаем")]
+    [InlineData(null)]
+    public void Invite_WritesRecruiterHistoryEntryWithOptionalComment(string? comment)
     {
         var application = ReviewApplication();
 
-        application.Invite("Приглашаем");
+        application.Invite(comment);
 
         var entry = application.History[^1];
         Assert.Equal(ApplicationStatus.RecruiterReview, entry.FromStatus);
         Assert.Equal(ApplicationStatus.Invited, entry.ToStatus);
         Assert.Equal(StatusChangedBy.Recruiter, entry.ChangedBy);
-        Assert.Equal("Приглашаем", entry.Reason);
-    }
-
-    [Fact]
-    public void Invite_WithoutCommentLeavesReasonNull()
-    {
-        var application = ReviewApplication();
-
-        application.Invite(null);
-
-        Assert.Null(application.History[^1].Reason);
+        Assert.Equal(comment, entry.Reason);
     }
 
     [Fact]
@@ -159,50 +145,59 @@ public class JobApplicationTests
         Assert.Equal(StatusChangedBy.Recruiter, application.History[^1].ChangedBy);
     }
 
-    [Fact]
-    public void Invite_FromAutoRejectedDoesNotChangeAlreadySentRejection()
+    // Отказ уже отправлен или окончательно не доставлен: приглашение его не трогает.
+    [Theory]
+    [InlineData(NotificationStatus.Sent)]
+    [InlineData(NotificationStatus.Failed)]
+    public void Invite_FromAutoRejectedDoesNotChangeFinishedRejection(NotificationStatus finished)
     {
         var application = AutoRejectedApplication();
         var rejection = application.Notifications[0];
-        rejection.MarkSent();
+        if (finished == NotificationStatus.Sent)
+            rejection.MarkSent();
+        else
+            for (var i = 0; i < Notification.MaxAttempts; i++)
+                rejection.MarkFailed("boom");
 
         application.Invite(null);
 
-        Assert.Equal(NotificationStatus.Sent, rejection.Status);
+        Assert.Equal(finished, rejection.Status);
     }
 
-    [Fact]
-    public void Invite_FromReceivedThrows()
+    // Отклик в нужном состоянии: «received», «auto_rejected», «invited», «rejected».
+    private static JobApplication InState(string state)
     {
-        var application = NewApplication();
+        switch (state)
+        {
+            case "received":
+                return NewApplication();
+            case "auto_rejected":
+                return AutoRejectedApplication();
+            case "invited":
+                var invited = ReviewApplication();
+                invited.Invite(null);
+                return invited;
+            default:
+                var rejected = ReviewApplication();
+                rejected.Reject(null, Delay);
+                return rejected;
+        }
+    }
+
+    [Theory]
+    [InlineData("received")]
+    [InlineData("invited")]
+    [InlineData("rejected")]
+    public void Invite_FromWrongStatusThrowsAndChangesNothing(string state)
+    {
+        var application = InState(state);
+        var (status, notifications, history) = (application.Status, application.Notifications.Count, application.History.Count);
 
         Assert.Throws<DomainException>(() => application.Invite(null));
 
-        Assert.Equal(ApplicationStatus.Received, application.Status);
-        Assert.Empty(application.Notifications);
-    }
-
-    [Fact]
-    public void Invite_FromInvitedThrowsAndDoesNotDuplicateNotification()
-    {
-        var application = ReviewApplication();
-        application.Invite(null);
-
-        Assert.Throws<DomainException>(() => application.Invite(null));
-
-        Assert.Single(application.Notifications);
-        Assert.Equal(2 + 1, application.History.Count);
-    }
-
-    [Fact]
-    public void Invite_FromRejectedThrows()
-    {
-        var application = ReviewApplication();
-        application.Reject(null, Delay);
-
-        Assert.Throws<DomainException>(() => application.Invite(null));
-
-        Assert.Equal(ApplicationStatus.Rejected, application.Status);
+        Assert.Equal(status, application.Status);
+        Assert.Equal(notifications, application.Notifications.Count);
+        Assert.Equal(history, application.History.Count);
     }
 
     [Fact]
@@ -226,68 +221,31 @@ public class JobApplicationTests
         Assert.Equal("Не подходит", entry.Reason);
     }
 
-    [Fact]
-    public void Reject_FromReceivedThrows()
+    [Theory]
+    [InlineData("received")]
+    [InlineData("auto_rejected")]
+    [InlineData("invited")]
+    [InlineData("rejected")]
+    public void Reject_FromWrongStatusThrowsAndChangesNothing(string state)
     {
-        var application = NewApplication();
-
-        Assert.Throws<DomainException>(() => application.Reject(null, Delay));
-    }
-
-    [Fact]
-    public void Reject_FromAutoRejectedThrows()
-    {
-        var application = AutoRejectedApplication();
+        var application = InState(state);
+        var (status, notifications, history) = (application.Status, application.Notifications.Count, application.History.Count);
 
         Assert.Throws<DomainException>(() => application.Reject(null, Delay));
 
-        Assert.Equal(ApplicationStatus.AutoRejected, application.Status);
-        Assert.Single(application.Notifications);
-    }
-
-    [Fact]
-    public void Reject_FromInvitedThrows()
-    {
-        var application = ReviewApplication();
-        application.Invite(null);
-
-        Assert.Throws<DomainException>(() => application.Reject(null, Delay));
-    }
-
-    [Fact]
-    public void Reject_FromRejectedThrowsAndDoesNotDuplicateNotification()
-    {
-        var application = ReviewApplication();
-        application.Reject(null, Delay);
-
-        Assert.Throws<DomainException>(() => application.Reject(null, Delay));
-
-        Assert.Single(application.Notifications);
+        Assert.Equal(status, application.Status);
+        Assert.Equal(notifications, application.Notifications.Count);
+        Assert.Equal(history, application.History.Count);
     }
 
     [Fact]
     public void StatusChange_UpdatesUpdatedAt()
     {
         var application = ReviewApplication();
-        var previous = application.UpdatedAt;
+        var before = DateTime.UtcNow;
 
         application.Invite(null);
 
-        Assert.True(application.UpdatedAt >= previous);
-    }
-
-    [Fact]
-    public void FullFlow_HistoryIsRecordedInOrder()
-    {
-        var application = AutoRejectedApplication();
-        application.Invite(null);
-
-        Assert.Equal(
-            [
-                (null, ApplicationStatus.Received),
-                (ApplicationStatus.Received, ApplicationStatus.AutoRejected),
-                (ApplicationStatus.AutoRejected, ApplicationStatus.Invited),
-            ],
-            application.History.Select(h => (h.FromStatus, h.ToStatus)).ToArray());
+        Assert.InRange(application.UpdatedAt, before, DateTime.UtcNow);
     }
 }

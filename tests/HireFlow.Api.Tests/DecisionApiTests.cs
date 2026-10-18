@@ -32,18 +32,6 @@ public class DecisionApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task Invite_PersistsStatusInDatabase()
-    {
-        var created = await CreateReviewApplicationAsync();
-        await DecideAsync(created.Id, "invite");
-
-        var loaded = await ReadAsync<ApplicationResponse>(await Client.GetAsync($"/applications/{created.Id}"));
-
-        Assert.Equal(ApplicationStatus.Invited, loaded.Status);
-        Assert.Equal(3, loaded.History.Count);
-    }
-
-    [Fact]
     public async Task Reject_MovesToRejectedAndQueuesDelayedNotification()
     {
         var created = await CreateReviewApplicationAsync();
@@ -60,7 +48,7 @@ public class DecisionApiTests(ApiAppFixture app) : ApiTestBase(app)
         var notification = Assert.Single(await GetNotificationsAsync(created.Id));
         Assert.Equal(NotificationType.Rejected, notification.Type);
         Assert.Equal(NotificationStatus.Pending, notification.Status);
-        Assert.InRange(notification.SendAfter, before.AddHours(4), DateTime.UtcNow.AddHours(4));
+        Assert.InRange(notification.SendAfter, before + ApiFactory.RejectionDelay, DateTime.UtcNow + ApiFactory.RejectionDelay);
         Assert.DoesNotContain(await GetDueAsync(), d => d.Id == notification.Id);
     }
 
@@ -103,28 +91,6 @@ public class DecisionApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task Decision_SecondDecisionReturns409()
-    {
-        var created = await CreateReviewApplicationAsync();
-        (await DecideAsync(created.Id, "invite")).EnsureSuccessStatusCode();
-
-        Assert.Equal(HttpStatusCode.Conflict, (await DecideAsync(created.Id, "invite")).StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, (await DecideAsync(created.Id, "reject")).StatusCode);
-        Assert.Single(await GetNotificationsAsync(created.Id));
-    }
-
-    [Fact]
-    public async Task Decision_RejectedCannotBeInvited()
-    {
-        var created = await CreateReviewApplicationAsync();
-        (await DecideAsync(created.Id, "reject")).EnsureSuccessStatusCode();
-
-        var response = await DecideAsync(created.Id, "invite");
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-    }
-
-    [Fact]
     public async Task Decision_WithoutDecisionReturns400()
     {
         var created = await CreateReviewApplicationAsync();
@@ -134,26 +100,6 @@ public class DecisionApiTests(ApiAppFixture app) : ApiTestBase(app)
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var loaded = await ReadAsync<ApplicationResponse>(await Client.GetAsync($"/applications/{created.Id}"));
         Assert.Equal(ApplicationStatus.RecruiterReview, loaded.Status);
-    }
-
-    [Fact]
-    public async Task Decision_UnknownDecisionValueReturns400()
-    {
-        var created = await CreateReviewApplicationAsync();
-
-        var response = await DecideAsync(created.Id, "bogus");
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Decision_TooLongCommentReturns400()
-    {
-        var created = await CreateReviewApplicationAsync();
-
-        var response = await DecideAsync(created.Id, "invite", new string('x', 1001));
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

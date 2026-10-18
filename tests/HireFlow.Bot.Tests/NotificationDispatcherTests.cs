@@ -11,8 +11,10 @@ public class NotificationDispatcherTests
     private readonly FakeHireFlowApiClient _api = new();
     private readonly FakeChatGateway _chat = new();
 
-    private NotificationDispatcherService CreateService() =>
-        new(_api, _chat, Options.Create(new BotOptions()), NullLogger<NotificationDispatcherService>.Instance);
+    // Сервис без scope: итерацию запускаем перегрузкой, которая принимает готовые фейки.
+    private Task RunOnceAsync() =>
+        new NotificationDispatcherService(null!, Options.Create(new BotOptions()), NullLogger<NotificationDispatcherService>.Instance)
+            .RunOnceAsync(_api, _chat, CancellationToken.None);
 
     [Theory]
     [InlineData(NotificationKind.Invited, "Вас приглашают на созвон по вакансии «QA». Рекрутер свяжется с вами.")]
@@ -22,7 +24,7 @@ public class NotificationDispatcherTests
         var notification = new DueNotificationDto(Guid.NewGuid(), 777, kind, "QA");
         _api.Due.Add(notification);
 
-        await CreateService().RunOnceAsync(CancellationToken.None);
+        await RunOnceAsync();
 
         Assert.Equal((777L, expectedText), Assert.Single(_chat.Sent));
         Assert.Equal([notification.Id], _api.SentIds);
@@ -36,7 +38,7 @@ public class NotificationDispatcherTests
         _api.Due.Add(notification);
         _chat.SendFailure = new InvalidOperationException("Forbidden: bot was blocked by the user");
 
-        await CreateService().RunOnceAsync(CancellationToken.None);
+        await RunOnceAsync();
 
         Assert.Empty(_api.SentIds);
         var failed = Assert.Single(_api.FailedIds);

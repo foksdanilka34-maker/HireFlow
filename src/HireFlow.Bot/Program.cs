@@ -27,10 +27,11 @@ builder.Services.AddHttpClient<IHireFlowApiClient, HireFlowApiClient>((sp, http)
     http.DefaultRequestHeaders.Add("X-Api-Key", botOptions.ApiKey);
 });
 
-builder.Services.AddSingleton<ITelegramBotClient>(sp =>
-    new TelegramBotClient(sp.GetRequiredService<IOptions<BotOptions>>().Value.TelegramToken));
-builder.Services.AddSingleton<IChatGateway, TelegramChatGateway>();
-builder.Services.AddSingleton<DialogHandler>();
+builder.Services.AddHttpClient("telegram")
+    .AddTypedClient<ITelegramBotClient>((http, sp) =>
+        new TelegramBotClient(sp.GetRequiredService<IOptions<BotOptions>>().Value.TelegramToken, http));
+builder.Services.AddScoped<IChatGateway, TelegramChatGateway>();
+builder.Services.AddScoped<DialogHandler>();
 
 builder.Services.AddHostedService<UpdateReceiverService>();
 builder.Services.AddHostedService<NotificationDispatcherService>();

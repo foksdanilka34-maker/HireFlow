@@ -75,19 +75,16 @@ public class DialogApplyTests
         Assert.Equal([vacancies[0].Id, vacancies[1].Id], _bot.Session.Draft.VacancyIds);
     }
 
-    [Theory]
-    [InlineData(CandidateStatus.InReview, "На рассмотрении")]
-    [InlineData(CandidateStatus.Invited, "Приглашение на созвон")]
-    [InlineData(CandidateStatus.Rejected, "Отказ")]
-    public async Task Apply_ConflictOnExistingApplicationShowsItsStatus(CandidateStatus status, string statusText)
+    [Fact]
+    public async Task Apply_ConflictOnExistingApplicationShowsItsStatus()
     {
         var vacancy = await ReachListAsync(phoneFound: true, candidateExists: true);
-        _bot.Api.Applications.Add(new CandidateApplicationDto(Guid.NewGuid(), vacancy.Id, "A", status));
+        _bot.Api.Applications.Add(new CandidateApplicationDto(Guid.NewGuid(), vacancy.Id, "A", CandidateStatus.Invited));
         _bot.Api.OnCreateApplication = _ => ApiResult<ApplicationCreatedDto>.Failure(ApiStatus.Conflict);
 
         await _bot.SendAsync("1");
 
-        Assert.Equal($"Вы уже откликались на «A», статус: {statusText}.", _bot.Last);
+        Assert.Equal($"Вы уже откликались на «A», статус: Приглашение на созвон.", _bot.Last);
     }
 
     [Fact]

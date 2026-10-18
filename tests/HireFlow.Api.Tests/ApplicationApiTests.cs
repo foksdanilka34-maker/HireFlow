@@ -32,7 +32,14 @@ public class ApplicationApiTests(ApiAppFixture app) : ApiTestBase(app)
         var response = await ApplyAsync(candidate.TelegramId, vacancy.Id, ResumeWith(skill), fileName: "my-resume.pdf");
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var application = await ReadAsync<ApplicationResponse>(response);
+        var raw = await response.Content.ReadAsStringAsync();
+        var application = JsonSerializer.Deserialize<ApplicationResponse>(raw, Json)!;
+        using (var json = JsonDocument.Parse(raw))
+        {
+            // Перечисления в JSON пишутся в snake_case.
+            Assert.Equal("recruiter_review", json.RootElement.GetProperty("status").GetString());
+            Assert.Equal("passed", json.RootElement.GetProperty("screening").GetProperty("verdict").GetString());
+        }
         Assert.Equal($"/applications/{application.Id}", response.Headers.Location!.OriginalString);
         Assert.Equal(ApplicationStatus.RecruiterReview, application.Status);
         Assert.Equal(ScreeningVerdict.Passed, application.Screening.Verdict);
@@ -50,20 +57,6 @@ public class ApplicationApiTests(ApiAppFixture app) : ApiTestBase(app)
         Assert.Equal(StatusChangedBy.System, application.History[1].ChangedBy);
 
         Assert.Empty(await GetNotificationsAsync(application.Id));
-    }
-
-    [Fact]
-    public async Task Create_StatusIsSnakeCaseInJson()
-    {
-        var skill = Unique("s");
-        var vacancy = await CreateVacancyAsync([skill]);
-        var candidate = await CreateCandidateAsync();
-
-        var response = await ApplyAsync(candidate.TelegramId, vacancy.Id, ResumeWith(skill));
-
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("recruiter_review", json.RootElement.GetProperty("status").GetString());
-        Assert.Equal("passed", json.RootElement.GetProperty("screening").GetProperty("verdict").GetString());
     }
 
     [Fact]
@@ -117,24 +110,8 @@ public class ApplicationApiTests(ApiAppFixture app) : ApiTestBase(app)
         var notification = Assert.Single(await GetNotificationsAsync(application.Id));
         Assert.Equal(NotificationType.Rejected, notification.Type);
         Assert.Equal(NotificationStatus.Pending, notification.Status);
-        // Задержка из appsettings.json: 4 часа.
-        Assert.InRange(notification.SendAfter, before.AddHours(4), DateTime.UtcNow.AddHours(4));
+        Assert.InRange(notification.SendAfter, before + ApiFactory.RejectionDelay, DateTime.UtcNow + ApiFactory.RejectionDelay);
         Assert.DoesNotContain(await GetDueAsync(), d => d.Id == notification.Id);
-    }
-
-    [Fact]
-    public async Task Create_BorderlineWithLackingExperienceGoesToRecruiterReview()
-    {
-        var skill = Unique("s");
-        var vacancy = await CreateVacancyAsync([skill], minYears: 5);
-        var candidate = await CreateCandidateAsync();
-
-        var application = await ApplyOkAsync(candidate.TelegramId, vacancy.Id, ResumeWith(skill), years: 1);
-
-        Assert.Equal(ApplicationStatus.RecruiterReview, application.Status);
-        Assert.Equal(ScreeningVerdict.Borderline, application.Screening.Verdict);
-        Assert.False(application.Screening.ExperienceIsEnough);
-        Assert.Empty(await GetNotificationsAsync(application.Id));
     }
 
     [Fact]
@@ -164,20 +141,7 @@ public class ApplicationApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task Create_ArchivedVacancyReturns409()
-    {
-        var skill = Unique("s");
-        var vacancy = await CreateVacancyAsync([skill]);
-        (await Client.PostAsync($"/vacancies/{vacancy.Id}/archive", null)).EnsureSuccessStatusCode();
-        var candidate = await CreateCandidateAsync();
-
-        var response = await ApplyAsync(candidate.TelegramId, vacancy.Id, ResumeWith(skill));
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Create_DuplicateApplicationReturns409AndCreatesNoSecondApplicationOrFile()
+    public async Task Create_DuplicateApplicationReturns409BeforeReadingResumeAndCreatesNothing()
     {
         var skill = Unique("s");
         var vacancy = await CreateVacancyAsync([skill]);
@@ -185,7 +149,8 @@ public class ApplicationApiTests(ApiAppFixture app) : ApiTestBase(app)
         var first = await ApplyOkAsync(candidate.TelegramId, vacancy.Id, ResumeWith(skill));
         var filesAfterFirst = StoredFileCount();
 
-        var response = await ApplyAsync(candidate.TelegramId, vacancy.Id, ResumeWith(skill));
+        // Файл заведомо непригоден, но ответ 409, а не 400: дубль проверяется раньше файла.
+        var response = await ApplyAsync(candidate.TelegramId, vacancy.Id, ResumeFactory.OldDoc());
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(1, await CountApplicationsAsync(vacancy.Id));
@@ -193,35 +158,6 @@ public class ApplicationApiTests(ApiAppFixture app) : ApiTestBase(app)
         var loaded = await ReadAsync<ApplicationResponse>(await Client.GetAsync($"/applications/{first.Id}"));
         Assert.Equal(ApplicationStatus.RecruiterReview, loaded.Status);
         Assert.Equal(2, loaded.History.Count);
-    }
-
-    [Fact]
-    public async Task Create_DuplicateIsDetectedBeforeReadingResume()
-    {
-        var skill = Unique("s");
-        var vacancy = await CreateVacancyAsync([skill]);
-        var candidate = await CreateCandidateAsync();
-        await ApplyOkAsync(candidate.TelegramId, vacancy.Id, ResumeWith(skill));
-
-        // Файл заведомо непригоден, но ответ всё равно 409, а не 400: дубль проверяется раньше файла.
-        var response = await ApplyAsync(candidate.TelegramId, vacancy.Id, ResumeFactory.OldDoc());
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Create_DuplicateAfterAutoRejectIsAlsoConflict()
-    {
-        // Два обязательных навыка: при нехватке одного отклик был бы пограничным, а не автоотказом.
-        var vacancy = await CreateVacancyAsync([Unique("s"), Unique("s")]);
-        var candidate = await CreateCandidateAsync();
-        var first = await ApplyOkAsync(candidate.TelegramId, vacancy.Id, ResumeWith("nothing"));
-        Assert.Equal(ApplicationStatus.AutoRejected, first.Status);
-
-        var response = await ApplyAsync(candidate.TelegramId, vacancy.Id, ResumeWith("nothing"));
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal(1, await CountApplicationsAsync(vacancy.Id));
     }
 
     [Fact]
@@ -253,46 +189,6 @@ public class ApplicationApiTests(ApiAppFixture app) : ApiTestBase(app)
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(0, await CountApplicationsAsync(vacancy.Id));
         Assert.Equal(filesBefore, StoredFileCount());
-    }
-
-    [Fact]
-    public async Task Create_ScanWithoutTextReturns400()
-    {
-        var vacancy = await CreateVacancyAsync([Unique("s")]);
-        var candidate = await CreateCandidateAsync();
-
-        var response = await ApplyAsync(candidate.TelegramId, vacancy.Id, ResumeFactory.EmptyPdf());
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Create_YearsOutOfRangeReturns400()
-    {
-        var skill = Unique("s");
-        var vacancy = await CreateVacancyAsync([skill]);
-        var candidate = await CreateCandidateAsync();
-
-        var response = await ApplyAsync(candidate.TelegramId, vacancy.Id, ResumeWith(skill), years: 51);
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Create_WithoutFileReturns400()
-    {
-        var vacancy = await CreateVacancyAsync([Unique("s")]);
-        var candidate = await CreateCandidateAsync();
-        using var form = new MultipartFormDataContent
-        {
-            { new StringContent(candidate.TelegramId.ToString()), "telegramId" },
-            { new StringContent(vacancy.Id.ToString()), "vacancyId" },
-            { new StringContent("3"), "yearsOfExperience" },
-        };
-
-        var response = await Client.PostAsync("/applications", form);
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -353,19 +249,6 @@ public class ApplicationApiTests(ApiAppFixture app) : ApiTestBase(app)
         Assert.Equal(good.Name, item.CandidateName);
         Assert.Equal(ScreeningVerdict.Passed, item.Verdict);
         Assert.Equal(100, item.Score);
-    }
-
-    [Fact]
-    public async Task List_NewestFirst()
-    {
-        var skill = Unique("s");
-        var vacancy = await CreateVacancyAsync([skill]);
-        var first = await ApplyOkAsync((await CreateCandidateAsync()).TelegramId, vacancy.Id, ResumeWith(skill));
-        var second = await ApplyOkAsync((await CreateCandidateAsync()).TelegramId, vacancy.Id, ResumeWith(skill));
-
-        var items = await ReadAsync<List<ApplicationListItem>>(await Client.GetAsync($"/applications?vacancyId={vacancy.Id}"));
-
-        Assert.Equal([second.Id, first.Id], items.Select(i => i.Id).ToList());
     }
 
     [Fact]

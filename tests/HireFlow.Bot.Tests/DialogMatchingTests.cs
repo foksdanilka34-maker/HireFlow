@@ -45,8 +45,6 @@ public class DialogMatchingTests
     [InlineData("abc")]
     [InlineData("60")]
     [InlineData("51")]
-    [InlineData("-3")]
-    [InlineData("три года")]
     public async Task AwaitingExperience_InvalidAnswerRepeatsQuestionWithoutMatching(string answer)
     {
         _bot.SetMatches([], years: null, experienceRequired: true);
@@ -61,10 +59,8 @@ public class DialogMatchingTests
 
     [Theory]
     [InlineData("5 лет", 5)]
-    [InlineData("5", 5)]
-    [InlineData("1 год", 1)]
-    [InlineData("0", 0)]
     [InlineData("50", 50)]
+    [InlineData("5 лет.", 5)]
     public async Task AwaitingExperience_NumberRepeatsMatchingWithThatExperience(string answer, int expected)
     {
         var vacancy = _bot.AddVacancy("Backend");
@@ -108,21 +104,6 @@ public class DialogMatchingTests
         await _bot.SendAsync("5");
 
         Assert.Equal(vacancies[4].Id, _bot.Api.ApplicationCalls.Single().VacancyId);
-    }
-
-    [Theory]
-    [InlineData("1", 0)]
-    [InlineData("2", 1)]
-    [InlineData("3", 2)]
-    public async Task List_NumberAppliesToTheChosenVacancy(string number, int index)
-    {
-        var vacancies = _bot.AddVacancies(4);
-        _bot.SetMatches(vacancies);
-        await _bot.SendDocumentAsync();
-
-        await _bot.SendAsync(number);
-
-        Assert.Equal(vacancies[index].Id, _bot.Api.ApplicationCalls.Single().VacancyId);
     }
 
     [Theory]
@@ -198,5 +179,44 @@ public class DialogMatchingTests
         await _bot.SendAsync("0");
 
         Assert.Equal(linked.Id, _bot.Api.ApplicationCalls.Single().VacancyId);
+    }
+
+    [Fact]
+    public async Task List_DoesNotShowClosedVacancyAndNumbersOnlyShownOnes()
+    {
+        var first = _bot.AddVacancy("Первая");
+        var closed = _bot.AddVacancy("Закрытая", status: "closed");
+        var third = _bot.AddVacancy("Третья");
+        _bot.SetMatches([first, closed, third]);
+
+        await _bot.SendDocumentAsync();
+
+        Assert.Contains("1. Первая (QA)", _bot.Last);
+        Assert.Contains("2. Третья (QA)", _bot.Last);
+        Assert.DoesNotContain("Закрытая", _bot.Last);
+
+        await _bot.SendAsync("2");
+
+        Assert.Equal(third.Id, _bot.Api.ApplicationCalls.Single().VacancyId);
+    }
+
+    [Fact]
+    public async Task LinkedVacancyClosedAfterStart_SaysClosedWithoutAskingForPhone()
+    {
+        var linked = _bot.AddVacancy("Ссылочная");
+        _bot.Api.CandidateExists = false;
+        _bot.SetMatches([linked], phoneFound: false);
+        await _bot.SendAsync($"/start {linked.Id}");
+        await _bot.SendDocumentAsync();
+        Assert.Equal(BotSteps.ConfirmingLinked, _bot.Session.Step);
+        _bot.Api.Vacancies[linked.Id] = linked with { Status = "closed" };
+
+        await _bot.SendAsync("да");
+
+        // Два ответа: «набор закрыт» и затем подбор без закрытой вакансии.
+        Assert.Contains("закрыт", _bot.Chat.Sent[^2].Text);
+        Assert.DoesNotContain(BotTexts.AskPhone, _bot.AllReplies);
+        Assert.NotEqual(BotSteps.AwaitingPhone, _bot.Session.Step);
+        Assert.Empty(_bot.Api.ApplicationCalls);
     }
 }

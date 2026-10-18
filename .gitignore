@@ -486,3 +486,7 @@ storage/
 
 # Claude Code: план текущей задачи
 PLAN.md
+
+.claude/
+
+CLAUDE.md

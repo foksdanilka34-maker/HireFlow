@@ -63,32 +63,32 @@ public class VacancyTests
         Assert.Equal(VacancyStatus.Archived, vacancy.Status);
     }
 
-    [Fact]
-    public void Update_ThrowsWhenArchived()
+    [Theory]
+    [InlineData("update")]
+    [InlineData("open")]
+    [InlineData("close")]
+    public void ChangingArchivedVacancyThrowsAndKeepsItUntouched(string action)
     {
         var vacancy = ArchivedVacancy();
 
-        Assert.Throws<DomainException>(() => vacancy.Update("x", "y", null, Requirements(["a"]), 1));
+        Assert.Throws<DomainException>(() =>
+        {
+            switch (action)
+            {
+                case "update":
+                    vacancy.Update("x", "y", null, Requirements(["a"]), 1);
+                    break;
+                case "open":
+                    vacancy.Open();
+                    break;
+                default:
+                    vacancy.Close();
+                    break;
+            }
+        });
 
+        Assert.Equal(VacancyStatus.Archived, vacancy.Status);
         Assert.Equal("QA Engineer", vacancy.Title);
-    }
-
-    [Fact]
-    public void Open_ThrowsWhenArchived()
-    {
-        var vacancy = ArchivedVacancy();
-
-        Assert.Throws<DomainException>(() => vacancy.Open());
-        Assert.Equal(VacancyStatus.Archived, vacancy.Status);
-    }
-
-    [Fact]
-    public void Close_ThrowsWhenArchived()
-    {
-        var vacancy = ArchivedVacancy();
-
-        Assert.Throws<DomainException>(() => vacancy.Close());
-        Assert.Equal(VacancyStatus.Archived, vacancy.Status);
     }
 
     [Fact]
@@ -119,16 +119,17 @@ public class VacancyTests
     public void EnsureAcceptsApplications_PassesForOpen() =>
         NewVacancy().EnsureAcceptsApplications();
 
-    [Fact]
-    public void EnsureAcceptsApplications_ThrowsForClosed()
+    [Theory]
+    [InlineData(VacancyStatus.Closed)]
+    [InlineData(VacancyStatus.Archived)]
+    public void EnsureAcceptsApplications_ThrowsForClosedAndArchived(VacancyStatus status)
     {
         var vacancy = NewVacancy();
-        vacancy.Close();
+        if (status == VacancyStatus.Closed)
+            vacancy.Close();
+        else
+            vacancy.Archive();
 
         Assert.Throws<DomainException>(() => vacancy.EnsureAcceptsApplications());
     }
-
-    [Fact]
-    public void EnsureAcceptsApplications_ThrowsForArchived() =>
-        Assert.Throws<DomainException>(() => ArchivedVacancy().EnsureAcceptsApplications());
 }

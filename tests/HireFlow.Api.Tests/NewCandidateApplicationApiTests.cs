@@ -57,8 +57,11 @@ public class NewCandidateApplicationApiTests(ApiAppFixture app) : ApiTestBase(ap
         Assert.Equal("+442079460958", (await GetCandidateAsync(telegramId)).Phone);
     }
 
-    [Fact]
-    public async Task Create_NoPhoneAnywhereReturns400AndCreatesNothing()
+    [Theory]
+    [InlineData("Иван", null)]
+    [InlineData("Иван", "abc")]
+    [InlineData(null, "+79991234567")]
+    public async Task Create_NewCandidateWithoutNameOrValidPhoneReturns400AndCreatesNothing(string? name, string? phone)
     {
         var skill = Unique("s");
         var vacancy = await CreateVacancyAsync([skill]);
@@ -66,7 +69,7 @@ public class NewCandidateApplicationApiTests(ApiAppFixture app) : ApiTestBase(ap
         var filesBefore = StoredFileCount();
 
         var response = await ApplyAsNewAsync(
-            telegramId, vacancy.Id, ResumeFactory.Docx($"Навыки: {skill}", "Работал 2019–2023"), "Иван", phone: null);
+            telegramId, vacancy.Id, ResumeFactory.Docx($"Навыки: {skill}", "Работал 2019–2023"), name, phone);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Client.GetAsync($"/candidates/{telegramId}")).StatusCode);

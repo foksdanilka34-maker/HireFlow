@@ -23,5 +23,5 @@ public record BotSessionResponse(
 {
     // Собирает ответ API из сущности.
     public static BotSessionResponse From(BotSession s) => new(
-        s.TelegramId, s.Step, s.LinkedVacancyId, JsonDocument.Parse(s.Draft).RootElement.Clone(), s.UpdatedAt);
+        s.TelegramId, s.Step, s.LinkedVacancyId, JsonElement.Parse(s.Draft), s.UpdatedAt);
 }

@@ -26,7 +26,7 @@ internal sealed class DialogHarness
     public BotSessionState Session => JsonSerializer.Deserialize<BotSessionState>(Api.Sessions[UserId])!;
 
     // Кандидат пишет текст.
-    public Task SendAsync(string text) => Handler.HandleAsync(
+    public Task SendAsync(string? text) => Handler.HandleAsync(
         new IncomingMessage(UserId, UserId, text, null, "Иван", "Петров"), CancellationToken.None);
 
     // Кандидат присылает документ.
@@ -34,10 +34,6 @@ internal sealed class DialogHarness
         Handler.HandleAsync(
             new IncomingMessage(UserId, UserId, null, new IncomingDocument(fileId, fileName, fileSize), "Иван", "Петров"),
             CancellationToken.None);
-
-    // Кандидат присылает фото или стикер: ни текста, ни документа.
-    public Task SendNonTextAsync() => Handler.HandleAsync(
-        new IncomingMessage(UserId, UserId, null, null, "Иван", "Петров"), CancellationToken.None);
 
     // Добавляет вакансию в API.
     public VacancyDto AddVacancy(string title, string status = "open", string direction = "QA")

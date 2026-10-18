@@ -1,6 +1,7 @@
 using HireFlow.Bot.Api;
 using HireFlow.Bot.Dialog;
 using HireFlow.Bot.Telegram;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -8,8 +9,7 @@ using Microsoft.Extensions.Options;
 namespace HireFlow.Bot;
 
 public class NotificationDispatcherService(
-    IHireFlowApiClient api,
-    IChatGateway chat,
+    IServiceScopeFactory scopes,
     IOptions<BotOptions> options,
     ILogger<NotificationDispatcherService> logger) : BackgroundService
 {
@@ -39,8 +39,18 @@ public class NotificationDispatcherService(
         while (await WaitNextAsync(timer, stoppingToken));
     }
 
-    // Одна итерация: получить уведомления, отправить каждое и отметить результат в API.
+    // Одна итерация в собственном scope: клиенты API и Telegram живут только на время итерации.
     public async Task RunOnceAsync(CancellationToken ct)
+    {
+        using var scope = scopes.CreateScope();
+        await RunOnceAsync(
+            scope.ServiceProvider.GetRequiredService<IHireFlowApiClient>(),
+            scope.ServiceProvider.GetRequiredService<IChatGateway>(),
+            ct);
+    }
+
+    // Получает уведомления, отправляет каждое и отмечает результат в API.
+    private async Task RunOnceAsync(IHireFlowApiClient api, IChatGateway chat, CancellationToken ct)
     {
         var due = await api.GetDueNotificationsAsync(ct);
         if (!due.IsOk || due.Value is null)
@@ -57,7 +67,7 @@ public class NotificationDispatcherService(
                 var text = BotTexts.Notification(notification.Type, notification.VacancyTitle);
                 await chat.SendTextAsync(notification.TelegramId, text, ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 error = ex.Message.Length > ErrorMaxLength ? ex.Message[..ErrorMaxLength] : ex.Message;
                 if (string.IsNullOrWhiteSpace(error))

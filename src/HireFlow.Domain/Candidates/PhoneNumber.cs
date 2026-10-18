@@ -7,7 +7,7 @@ public static class PhoneNumber
     private const int MinDigits = 7;
     private const int MaxDigits = 15;
 
-    // Приводит номер к формату E.164 («+79991234567»); false, если на номер не похоже.
+    // Приводит номер к формату E.164 («+79991234567»); без «+» принимает только российские форматы (11 цифр на 7/8, 10 цифр на 9), иначе false.
     public static bool TryNormalize(string? input, out string e164)
     {
         e164 = "";
@@ -26,8 +26,22 @@ public static class PhoneNumber
                 return false;
         }
 
-        if (!hasPlus && digits.Length == 11 && digits[0] == '8')
-            digits[0] = '7';
+        if (!hasPlus)
+        {
+            // Без «+» принимаем только российский формат: 11 цифр на 7/8 или 10 цифр мобильного на 9.
+            if (digits.Length == 11 && digits[0] is '7' or '8')
+            {
+                digits[0] = '7';
+            }
+            else if (digits.Length == 10 && digits[0] == '9')
+            {
+                digits.Insert(0, '7');
+            }
+            else
+            {
+                return false;
+            }
+        }
 
         if (digits.Length is < MinDigits or > MaxDigits)
             return false;

@@ -27,6 +27,19 @@ public class NotificationTests
         return notification;
     }
 
+    // Уведомление в завершённом состоянии: «sent», «cancelled» или «failed».
+    private static Notification FinishedNotification(string state)
+    {
+        if (state == "cancelled")
+            return CancelledNotification();
+        if (state == "failed")
+            return FailedNotification();
+
+        var sent = PendingNotification();
+        sent.MarkSent();
+        return sent;
+    }
+
     [Fact]
     public void NewNotification_IsPendingWithZeroAttempts()
     {
@@ -80,57 +93,31 @@ public class NotificationTests
         Assert.Equal("chat not found", notification.LastError);
     }
 
-    [Fact]
-    public void MarkFailed_TruncatesErrorTo1000()
+    [Theory]
+    [InlineData(Notification.ErrorMaxLength + 500)]
+    [InlineData(Notification.ErrorMaxLength)]
+    public void MarkFailed_TruncatesErrorToMaxLength(int length)
     {
         var notification = PendingNotification();
 
-        notification.MarkFailed(new string('e', 1500));
+        notification.MarkFailed(new string('e', length));
 
-        Assert.Equal(Notification.ErrorMaxLength, notification.LastError!.Length);
+        Assert.Equal(new string('e', Notification.ErrorMaxLength), notification.LastError);
     }
 
-    [Fact]
-    public void MarkFailed_KeepsErrorOfExactlyMaxLength()
+    [Theory]
+    [InlineData("sent")]
+    [InlineData("cancelled")]
+    [InlineData("failed")]
+    public void MarkFailed_ThrowsForFinishedNotificationAndChangesNothing(string state)
     {
-        var notification = PendingNotification();
-        var error = new string('e', Notification.ErrorMaxLength);
-
-        notification.MarkFailed(error);
-
-        Assert.Equal(error, notification.LastError);
-    }
-
-    [Fact]
-    public void MarkFailed_ThrowsForSentNotification()
-    {
-        var notification = PendingNotification();
-        notification.MarkSent();
+        var notification = FinishedNotification(state);
+        var (status, attempts) = (notification.Status, notification.Attempts);
 
         Assert.Throws<DomainException>(() => notification.MarkFailed("boom"));
 
-        Assert.Equal(NotificationStatus.Sent, notification.Status);
-        Assert.Equal(0, notification.Attempts);
-    }
-
-    [Fact]
-    public void MarkFailed_ThrowsForCancelledNotification()
-    {
-        var notification = CancelledNotification();
-
-        Assert.Throws<DomainException>(() => notification.MarkFailed("boom"));
-
-        Assert.Equal(NotificationStatus.Cancelled, notification.Status);
-    }
-
-    [Fact]
-    public void MarkFailed_ThrowsForAlreadyFailedNotification()
-    {
-        var notification = FailedNotification();
-
-        Assert.Throws<DomainException>(() => notification.MarkFailed("boom"));
-
-        Assert.Equal(Notification.MaxAttempts, notification.Attempts);
+        Assert.Equal(status, notification.Status);
+        Assert.Equal(attempts, notification.Attempts);
     }
 
     [Fact]
@@ -158,38 +145,17 @@ public class NotificationTests
         Assert.Equal(sentAt, notification.SentAt);
     }
 
-    [Fact]
-    public void MarkSent_ThrowsForCancelledNotification()
+    [Theory]
+    [InlineData("cancelled")]
+    [InlineData("failed")]
+    public void MarkSent_ThrowsForCancelledOrFailedNotification(string state)
     {
-        var notification = CancelledNotification();
+        var notification = FinishedNotification(state);
+        var status = notification.Status;
 
         Assert.Throws<DomainException>(() => notification.MarkSent());
 
-        Assert.Equal(NotificationStatus.Cancelled, notification.Status);
+        Assert.Equal(status, notification.Status);
         Assert.Null(notification.SentAt);
-    }
-
-    [Fact]
-    public void MarkSent_ThrowsForFailedNotification()
-    {
-        var notification = FailedNotification();
-
-        Assert.Throws<DomainException>(() => notification.MarkSent());
-
-        Assert.Equal(NotificationStatus.Failed, notification.Status);
-        Assert.Null(notification.SentAt);
-    }
-
-    [Fact]
-    public void Invite_DoesNotCancelFailedRejection()
-    {
-        var application = AutoRejectedApplication();
-        var rejection = application.Notifications.Single();
-        for (var i = 0; i < Notification.MaxAttempts; i++)
-            rejection.MarkFailed("boom");
-
-        application.Invite(null);
-
-        Assert.Equal(NotificationStatus.Failed, rejection.Status);
     }
 }

@@ -2,14 +2,14 @@ using HireFlow.Bot.Dialog;
 using global::Telegram.Bot;
 using global::Telegram.Bot.Types;
 using global::Telegram.Bot.Types.Enums;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace HireFlow.Bot;
 
 public class UpdateReceiverService(
-    ITelegramBotClient client,
-    DialogHandler dialog,
+    IServiceScopeFactory scopes,
     ILogger<UpdateReceiverService> logger) : BackgroundService
 {
     private const int LongPollSeconds = 30;
@@ -25,6 +25,8 @@ public class UpdateReceiverService(
         {
             try
             {
+                using var pollScope = scopes.CreateScope();
+                var client = pollScope.ServiceProvider.GetRequiredService<ITelegramBotClient>();
                 var updates = await client.GetUpdates(
                     offset, timeout: LongPollSeconds, allowedUpdates: [UpdateType.Message], cancellationToken: stoppingToken);
 
@@ -55,20 +57,20 @@ public class UpdateReceiverService(
         {
             var message = Map(update);
             if (message is not null)
+            {
+                using var scope = scopes.CreateScope();
+                var dialog = scope.ServiceProvider.GetRequiredService<DialogHandler>();
                 await dialog.HandleAsync(message, ct);
+            }
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogError("Message handling failed: {ErrorType}", ex.GetType().Name);
         }
     }
 
     // Превращает обновление Telegram в сообщение диалога; не личный чат или не сообщение — null.
-    internal static IncomingMessage? Map(Update update)
+    private static IncomingMessage? Map(Update update)
     {
         var message = update.Message;
         if (message is null || message.From is null || message.Chat.Type != ChatType.Private)

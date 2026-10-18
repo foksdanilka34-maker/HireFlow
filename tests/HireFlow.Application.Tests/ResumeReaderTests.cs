@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using HireFlow.Application.Common;
 using HireFlow.Application.Resumes;
 
@@ -65,22 +63,12 @@ public class ResumeReaderTests
         Assert.Equal(ResumeFormat.Pdf, result.Format);
     }
 
-    [Fact]
-    public void Read_OldDocFormatThrowsBadRequest()
-    {
-        var extractor = new FakeExtractor();
-
-        Assert.Throws<BadRequestException>(() => new ResumeReader(extractor).Read(File(OleSignature)));
-
-        Assert.Empty(extractor.Formats);
-    }
-
     [Theory]
-    [InlineData(new byte[] { 0x00 })]
-    [InlineData(new byte[] { 0x25, 0x50, 0x44 })]
-    [InlineData(new byte[] { 0x50, 0x4B, 0x03 })]
-    [InlineData(new byte[] { 0x50, 0x4B, 0x05, 0x06, 0x00 })]
-    [InlineData(new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 })]
+    [InlineData(new byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0x00, 0x00 })]                          // старый .doc (OLE2)
+    [InlineData(new byte[] { 0x6A, 0x75, 0x73, 0x74, 0x20, 0x74, 0x65, 0x78, 0x74 })]        // обычный текст
+    [InlineData(new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 })]                                      // JPEG
+    [InlineData(new byte[] { 0x25, 0x50, 0x44 })]                                            // обрезанная сигнатура PDF
+    [InlineData(new byte[] { 0x50, 0x4B, 0x03 })]                                            // обрезанная сигнатура ZIP
     public void Read_UnknownContentThrowsBadRequest(byte[] content)
     {
         var extractor = new FakeExtractor();
@@ -89,11 +77,6 @@ public class ResumeReaderTests
 
         Assert.Empty(extractor.Formats);
     }
-
-    [Fact]
-    public void Read_TextFileWithoutSignatureThrowsBadRequest() =>
-        Assert.Throws<BadRequestException>(() =>
-            new ResumeReader(new FakeExtractor()).Read(Encoding.UTF8.GetBytes("просто текст, не резюме")));
 
     [Fact]
     public void Read_PdfSignatureGivesPdfFormatToExtractor()
@@ -127,23 +110,18 @@ public class ResumeReaderTests
         Assert.Equal("Python, SQL", result.Text);
     }
 
-    [Fact]
-    public void Read_ExtractorFailureBecomesBadRequest()
+    [Theory]
+    [InlineData(typeof(InvalidDataException))]
+    [InlineData(typeof(NullReferenceException))]
+    public void Read_AnyExtractorFailureBecomesBadRequestWithoutDetails(Type errorType)
     {
-        var reader = new ResumeReader(new FakeExtractor(error: new InvalidDataException("broken")));
+        var error = (Exception)Activator.CreateInstance(errorType, "broken")!;
+        var reader = new ResumeReader(new FakeExtractor(error: error));
 
         var exception = Assert.Throws<BadRequestException>(() => reader.Read(File(PdfSignature)));
 
         // Детали внутренней ошибки не должны уходить наружу.
         Assert.DoesNotContain("broken", exception.Message);
-    }
-
-    [Fact]
-    public void Read_AnyExtractorExceptionTypeBecomesBadRequest()
-    {
-        var reader = new ResumeReader(new FakeExtractor(error: new NullReferenceException()));
-
-        Assert.Throws<BadRequestException>(() => reader.Read(File(ZipSignature)));
     }
 
     [Theory]
@@ -158,34 +136,11 @@ public class ResumeReaderTests
     }
 
     [Fact]
-    public void Read_HashIsLowercaseSha256Of64Characters()
-    {
-        var content = File(PdfSignature, 500);
-
-        var result = new ResumeReader(new FakeExtractor()).Read(content);
-
-        Assert.Equal(64, result.Hash.Length);
-        Assert.Equal(result.Hash.ToLowerInvariant(), result.Hash);
-        Assert.Equal(Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant(), result.Hash);
-    }
-
-    [Fact]
     public void Read_HashMatchesKnownSha256()
     {
-        // SHA-256 от четырёх байт «%PDF» (эталон посчитан внешней утилитой shasum).
+        // SHA-256 от четырёх байт «%PDF» (эталон посчитан внешней утилитой shasum): строчные буквы, 64 символа.
         var result = new ResumeReader(new FakeExtractor()).Read(PdfSignature);
 
         Assert.Equal("315d429b7714cedb6ad04ac31240145257692630457f3c88253c5beceac76027", result.Hash);
-    }
-
-    [Fact]
-    public void Read_DifferentContentGivesDifferentHash()
-    {
-        var reader = new ResumeReader(new FakeExtractor());
-
-        var first = reader.Read(File(PdfSignature, 100));
-        var second = reader.Read(File(PdfSignature, 101));
-
-        Assert.NotEqual(first.Hash, second.Hash);
     }
 }

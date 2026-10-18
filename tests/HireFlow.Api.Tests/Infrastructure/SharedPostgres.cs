@@ -13,9 +13,7 @@ public static class SharedPostgres
         // postgres:18 нужен ради uuidv7().
         var container = new PostgreSqlBuilder("postgres:18").Build();
         await container.StartAsync();
-
-        // Контейнер убирает и Ryuk, но при штатном выходе останавливаем его сами.
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => container.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        // Контейнер удалит Ryuk после завершения прогона.
         return container;
     }
 

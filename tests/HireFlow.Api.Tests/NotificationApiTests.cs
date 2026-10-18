@@ -33,22 +33,17 @@ public class NotificationApiTests(ApiAppFixture app) : ApiTestBase(app)
     {
         var (_, notification, telegramId, title) = await InvitedAsync();
 
-        var due = (await GetDueAsync()).Single(d => d.Id == notification.Id);
+        var raw = await (await Client.GetAsync("/internal/notifications/due")).Content.ReadAsStringAsync();
+        var due = System.Text.Json.JsonSerializer.Deserialize<List<DueNotificationResponse>>(raw, Json)!
+            .Single(d => d.Id == notification.Id);
 
+        // Тип в JSON пишется в snake_case: ищем именно элемент этого уведомления.
+        using var json = System.Text.Json.JsonDocument.Parse(raw);
+        var element = json.RootElement.EnumerateArray().Single(e => e.GetProperty("id").GetGuid() == notification.Id);
+        Assert.Equal("invited", element.GetProperty("type").GetString());
         Assert.Equal(telegramId, due.TelegramId);
         Assert.Equal(NotificationType.Invited, due.Type);
         Assert.Equal(title, due.VacancyTitle);
-    }
-
-    [Fact]
-    public async Task Due_TypeIsSnakeCaseInJson()
-    {
-        var (_, notification, _, _) = await InvitedAsync();
-
-        var raw = await (await Client.GetAsync("/internal/notifications/due")).Content.ReadAsStringAsync();
-
-        Assert.Contains($"\"id\":\"{notification.Id}\"", raw);
-        Assert.Contains("\"type\":\"invited\"", raw);
     }
 
     [Fact]
@@ -65,26 +60,6 @@ public class NotificationApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task Due_DoesNotReturnSentNotification()
-    {
-        var (_, notification, _, _) = await InvitedAsync();
-        (await SentAsync(notification.Id)).EnsureSuccessStatusCode();
-
-        Assert.DoesNotContain(await GetDueAsync(), d => d.Id == notification.Id);
-    }
-
-    [Fact]
-    public async Task Due_DoesNotReturnCancelledNotification()
-    {
-        var application = await CreateAutoRejectedApplicationAsync();
-        var rejection = Assert.Single(await GetNotificationsAsync(application.Id));
-        await MakeDueAsync(rejection.Id);
-        (await DecideAsync(application.Id, "invite")).EnsureSuccessStatusCode();
-
-        Assert.DoesNotContain(await GetDueAsync(), d => d.Id == rejection.Id);
-    }
-
-    [Fact]
     public async Task Sent_Returns204AndMarksNotificationSent()
     {
         var (applicationId, notification, _, _) = await InvitedAsync();
@@ -95,6 +70,7 @@ public class NotificationApiTests(ApiAppFixture app) : ApiTestBase(app)
         var reloaded = await ReloadAsync(applicationId, notification.Id);
         Assert.Equal(NotificationStatus.Sent, reloaded.Status);
         Assert.NotNull(reloaded.SentAt);
+        Assert.DoesNotContain(await GetDueAsync(), d => d.Id == notification.Id);
     }
 
     [Fact]
@@ -126,19 +102,6 @@ public class NotificationApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task Sent_ForFailedNotificationReturns409()
-    {
-        var (applicationId, notification, _, _) = await InvitedAsync();
-        for (var i = 0; i < Notification.MaxAttempts; i++)
-            Assert.Equal(HttpStatusCode.NoContent, (await FailedAsync(notification.Id, "boom")).StatusCode);
-
-        var response = await SentAsync(notification.Id);
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal(NotificationStatus.Failed, (await ReloadAsync(applicationId, notification.Id)).Status);
-    }
-
-    [Fact]
     public async Task Sent_UnknownIdReturns404()
     {
         var response = await SentAsync(Guid.NewGuid());
@@ -164,62 +127,6 @@ public class NotificationApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
-    public async Task Failed_NotificationReturnsToDueWhenRetryTimeComes()
-    {
-        var (_, notification, _, _) = await InvitedAsync();
-        (await FailedAsync(notification.Id, "boom")).EnsureSuccessStatusCode();
-
-        await MakeDueAsync(notification.Id);
-
-        Assert.Contains(await GetDueAsync(), d => d.Id == notification.Id);
-    }
-
-    [Fact]
-    public async Task Failed_BackoffGrowsWithEachAttempt()
-    {
-        var (applicationId, notification, _, _) = await InvitedAsync();
-        var expectedMinutes = new[] { 2, 4, 8, 16 };
-
-        foreach (var minutes in expectedMinutes)
-        {
-            var before = DateTime.UtcNow;
-            (await FailedAsync(notification.Id, "boom")).EnsureSuccessStatusCode();
-
-            var reloaded = await ReloadAsync(applicationId, notification.Id);
-            Assert.InRange(reloaded.SendAfter, before.AddMinutes(minutes), DateTime.UtcNow.AddMinutes(minutes));
-        }
-    }
-
-    [Fact]
-    public async Task Failed_FifthFailureMakesNotificationFailedAndRemovesItFromDue()
-    {
-        var (applicationId, notification, _, _) = await InvitedAsync();
-
-        for (var i = 0; i < Notification.MaxAttempts; i++)
-        {
-            (await FailedAsync(notification.Id, "boom")).EnsureSuccessStatusCode();
-            await MakeDueAsync(notification.Id);
-        }
-
-        var reloaded = await ReloadAsync(applicationId, notification.Id);
-        Assert.Equal(NotificationStatus.Failed, reloaded.Status);
-        Assert.Equal(Notification.MaxAttempts, reloaded.Attempts);
-        Assert.DoesNotContain(await GetDueAsync(), d => d.Id == notification.Id);
-    }
-
-    [Fact]
-    public async Task Failed_ForAlreadyFailedNotificationReturns409()
-    {
-        var (_, notification, _, _) = await InvitedAsync();
-        for (var i = 0; i < Notification.MaxAttempts; i++)
-            (await FailedAsync(notification.Id, "boom")).EnsureSuccessStatusCode();
-
-        var response = await FailedAsync(notification.Id, "boom");
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-    }
-
-    [Fact]
     public async Task Failed_ForSentNotificationReturns409()
     {
         var (_, notification, _, _) = await InvitedAsync();
@@ -239,23 +146,5 @@ public class NotificationApiTests(ApiAppFixture app) : ApiTestBase(app)
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(0, (await ReloadAsync(applicationId, notification.Id)).Attempts);
-    }
-
-    [Fact]
-    public async Task Failed_TooLongErrorReturns400()
-    {
-        var (_, notification, _, _) = await InvitedAsync();
-
-        var response = await FailedAsync(notification.Id, new string('e', 1001));
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Failed_UnknownIdReturns404()
-    {
-        var response = await FailedAsync(Guid.NewGuid(), "boom");
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 }

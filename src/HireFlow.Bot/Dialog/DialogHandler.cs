@@ -33,6 +33,7 @@ public partial class DialogHandler(
         public List<string> Replies { get; } = [];
         public bool Save { get; set; }
         public Dictionary<Guid, VacancyDto> Vacancies { get; } = [];
+        public HashSet<Guid> NotFound { get; } = [];
     }
 
     // Обрабатывает одно входящее сообщение целиком: меняет сессию через API и отвечает кандидату.
@@ -231,7 +232,7 @@ public partial class DialogHandler(
         }
 
         foreach (var vacancy in matches.Vacancies)
-            turn.Vacancies[vacancy.Id] = vacancy;
+            turn.Vacancies[vacancy.Id] = vacancy with { Status = "open" };
 
         draft.VacancyIds = matches.Vacancies.Select(v => v.Id).Take(MaxListedVacancies).ToList();
         draft.Page = 0;
@@ -241,7 +242,7 @@ public partial class DialogHandler(
     // Шаг «опыт»: число 0–50 — повторный подбор с опытом.
     private async Task HandleExperienceAsync(Turn turn, string text, CancellationToken ct)
     {
-        var match = ExperienceText().Match(text);
+        var match = ExperienceText().Match(text.Trim().TrimEnd('.', '!', ',', ';', '?', '…').Trim());
         if (!match.Success || !int.TryParse(match.Groups[1].Value, out var years) || years > MaxExperience)
         {
             turn.Replies.Add(BotTexts.ExperienceHint);
@@ -285,7 +286,17 @@ public partial class DialogHandler(
                 return;
             }
 
-            draft.Page++;
+            var target = draft.Page + 1;
+            draft.Page = target;
+            await PruneUnavailableAsync(turn, ct, rollbackPage: false);
+            if (draft.Page * _pageSize >= draft.VacancyIds.Count)
+            {
+                var lastPage = draft.VacancyIds.Count == 0 ? 0 : (draft.VacancyIds.Count - 1) / _pageSize;
+                draft.Page = Math.Max(0, Math.Min(target - 1, lastPage));
+                turn.Replies.Add(draft.VacancyIds.Count == 0 ? BotTexts.NoMatches(null) : BotTexts.NoMoreVacancies);
+                return;
+            }
+
             turn.Replies.Add(await BuildPageAsync(turn, header: null, ct));
             return;
         }
@@ -327,7 +338,7 @@ public partial class DialogHandler(
         foreach (var vacancy in result.Value)
             turn.Vacancies[vacancy.Id] = vacancy;
 
-        draft.VacancyIds = result.Value.Select(v => v.Id).Take(MaxListedVacancies).ToList();
+        draft.VacancyIds = result.Value.Where(v => v.Status == "open").Select(v => v.Id).Take(MaxListedVacancies).ToList();
         draft.Page = 0;
         turn.Session.Step = BotSteps.ChoosingVacancy;
 
@@ -392,10 +403,12 @@ public partial class DialogHandler(
 
         if (session.LinkedVacancyId is { } linkedId)
         {
-            linked = await GetVacancyAsync(turn, linkedId, ct);
+            linked = await GetOpenVacancyAsync(turn, linkedId, ct);
             if (linked is null)
                 session.LinkedVacancyId = null;
         }
+
+        await PruneUnavailableAsync(turn, ct);
 
         if (linked is not null && draft.VacancyIds.Contains(linked.Id))
         {
@@ -410,24 +423,48 @@ public partial class DialogHandler(
             : await BuildPageAsync(turn, "Вам подходят вакансии:", ct));
     }
 
-    // Собирает текст текущей страницы списка; нумерация сквозная.
+    // Убирает из списка недоступные (не открытые или удалённые) вакансии текущей страницы, пока страница не заполнится открытыми.
+    private async Task PruneUnavailableAsync(Turn turn, CancellationToken ct, bool rollbackPage = true)
+    {
+        var draft = turn.Session.Draft;
+
+        while (true)
+        {
+            var pageIds = draft.VacancyIds.Skip(draft.Page * _pageSize).Take(_pageSize).ToList();
+            await LoadVacanciesAsync(turn, pageIds, ct);
+
+            var unavailable = pageIds.Where(id => !turn.Vacancies.TryGetValue(id, out var v) || v.Status != "open").ToList();
+            if (unavailable.Count == 0)
+                return;
+
+            draft.VacancyIds.RemoveAll(unavailable.Contains);
+            if (rollbackPage && draft.Page > 0 && draft.Page * _pageSize >= draft.VacancyIds.Count)
+                draft.Page--;
+        }
+    }
+
+    // Собирает текст текущей страницы списка (все вакансии страницы уже открыты); нумерация сквозная.
     private async Task<string> BuildPageAsync(Turn turn, string? header, CancellationToken ct)
     {
+        await PruneUnavailableAsync(turn, ct);
+
         var draft = turn.Session.Draft;
         var start = draft.Page * _pageSize;
         var lines = new List<string>();
 
         for (var i = 0; i < _pageSize && start + i < draft.VacancyIds.Count; i++)
         {
-            var vacancy = await GetVacancyAsync(turn, draft.VacancyIds[start + i], ct);
-            lines.Add(vacancy is null
-                ? $"{start + i + 1}. {BotTexts.UnavailableVacancy}"
-                : BotTexts.VacancyLine(start + i + 1, vacancy.Title, vacancy.Direction));
+            var vacancy = turn.Vacancies[draft.VacancyIds[start + i]];
+            lines.Add(BotTexts.VacancyLine(start + i + 1, vacancy.Title, vacancy.Direction));
         }
 
         string? linkedTitle = null;
         if (turn.Session.LinkedVacancyId is { } linkedId && !draft.VacancyIds.Contains(linkedId))
-            linkedTitle = (await GetVacancyAsync(turn, linkedId, ct))?.Title;
+        {
+            linkedTitle = (await GetOpenVacancyAsync(turn, linkedId, ct))?.Title;
+            if (linkedTitle is null)
+                turn.Session.LinkedVacancyId = null;
+        }
 
         var hasMore = start + _pageSize < draft.VacancyIds.Count;
         return BotTexts.VacancyPage(header, lines, hasMore, linkedTitle);
@@ -445,10 +482,17 @@ public partial class DialogHandler(
             return;
         }
 
-        var vacancy = await GetVacancyAsync(turn, vacancyId, ct);
+        var vacancy = await GetOpenVacancyAsync(turn, vacancyId, ct);
         if (vacancy is null)
         {
             await HandleClosedAsync(turn, vacancyId, null, ct);
+            return;
+        }
+
+        if (draft.YearsOfExperience is not { } years)
+        {
+            session.Step = BotSteps.AwaitingExperience;
+            turn.Replies.Add(BotTexts.AskExperience);
             return;
         }
 
@@ -467,7 +511,7 @@ public partial class DialogHandler(
         var result = await api.CreateApplicationAsync(new CreateApplicationCall(
             turn.Message.UserId,
             vacancyId,
-            draft.YearsOfExperience ?? 0,
+            years,
             file,
             draft.ResumeFileName ?? "resume",
             FullName(turn.Message),
@@ -571,19 +615,38 @@ public partial class DialogHandler(
     // Возвращает вакансию из кэша или API; null — вакансии нет.
     private async Task<VacancyDto?> GetVacancyAsync(Turn turn, Guid id, CancellationToken ct)
     {
-        if (turn.Vacancies.TryGetValue(id, out var cached))
-            return cached;
+        await LoadVacanciesAsync(turn, [id], ct);
+        return turn.Vacancies.GetValueOrDefault(id);
+    }
 
-        var result = await api.GetVacancyAsync(id, ct);
-        switch (result.Status)
+    // Возвращает вакансию, только если она открыта; закрытая, архивная или отсутствующая — null.
+    private async Task<VacancyDto?> GetOpenVacancyAsync(Turn turn, Guid id, CancellationToken ct)
+    {
+        var vacancy = await GetVacancyAsync(turn, id, ct);
+        return vacancy is { Status: "open" } ? vacancy : null;
+    }
+
+    // Догружает недостающие вакансии из API параллельно; 404 запоминается, другой сбой — «попробуйте позже».
+    private async Task LoadVacanciesAsync(Turn turn, IEnumerable<Guid> ids, CancellationToken ct)
+    {
+        var missing = ids.Where(id => !turn.Vacancies.ContainsKey(id) && !turn.NotFound.Contains(id)).Distinct().ToList();
+        if (missing.Count == 0)
+            return;
+
+        var results = await Task.WhenAll(missing.Select(id => api.GetVacancyAsync(id, ct)));
+        for (var i = 0; i < missing.Count; i++)
         {
-            case ApiStatus.Ok when result.Value is not null:
-                turn.Vacancies[id] = result.Value;
-                return result.Value;
-            case ApiStatus.NotFound:
-                return null;
-            default:
-                throw new ServiceUnavailableException();
+            switch (results[i].Status)
+            {
+                case ApiStatus.Ok when results[i].Value is not null:
+                    turn.Vacancies[missing[i]] = results[i].Value!;
+                    break;
+                case ApiStatus.NotFound:
+                    turn.NotFound.Add(missing[i]);
+                    break;
+                default:
+                    throw new ServiceUnavailableException();
+            }
         }
     }
 
@@ -594,7 +657,7 @@ public partial class DialogHandler(
         {
             return await chat.DownloadFileAsync(fileId, ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger?.LogWarning("File download failed: {ErrorType}", ex.GetType().Name);
             throw new ServiceUnavailableException();

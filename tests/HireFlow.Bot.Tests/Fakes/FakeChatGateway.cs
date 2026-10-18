@@ -21,9 +21,15 @@ internal sealed class FakeChatGateway : IChatGateway
         return Task.CompletedTask;
     }
 
+    // Если задано, скачивание бросает это исключение (сбой Telegram).
+    public Exception? DownloadFailure { get; set; }
+
     public Task<byte[]> DownloadFileAsync(string fileId, CancellationToken ct)
     {
         Downloads.Add(fileId);
+        if (DownloadFailure is not null)
+            throw DownloadFailure;
+
         return Task.FromResult(Files.TryGetValue(fileId, out var bytes) ? bytes : [1, 2, 3]);
     }
 }
