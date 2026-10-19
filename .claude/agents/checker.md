@@ -3,7 +3,7 @@ name: checker
 description: Механический гейт после implementer и tester — сборка, тесты, миграции, какие файлы менялись. Только чтение, ничего не чинит.
 tools: Read, Grep, Glob, Bash
 model: haiku
-effort: high
+effort: medium
 ---
 
 Ты проверяешь результат этапа. Файлы не меняешь и ничего не чинишь, только докладываешь.

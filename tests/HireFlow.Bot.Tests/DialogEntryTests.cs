@@ -116,14 +116,17 @@ public class DialogEntryTests
     [Theory]
     [InlineData("api")]
     [InlineData("download")]
+    [InlineData("timeout")]
     public async Task ServiceFailure_AnswersErrorAndKeepsStepWithoutSavingSession(string failure)
     {
         _bot.SeedSession(BotSteps.AwaitingResume);
         var before = _bot.Api.Sessions[DialogHarness.UserId];
         if (failure == "api")
             _bot.Api.OnMatches = _ => ApiResult<MatchesDto>.Failure(ApiStatus.Error);
-        else
+        else if (failure == "download")
             _bot.Chat.DownloadFailure = new HttpRequestException("telegram down");
+        else
+            _bot.Chat.DownloadFailure = new TaskCanceledException();
 
         await _bot.SendDocumentAsync();
 

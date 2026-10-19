@@ -17,6 +17,7 @@ builder.Services.AddOptions<BotOptions>()
         "Bot:ApiBaseUrl is not set or is not an absolute URL.")
     .Validate(o => o.NotificationPollInterval > TimeSpan.Zero, "Bot:NotificationPollInterval must be positive.")
     .Validate(o => o.PageSize > 0, "Bot:PageSize must be positive.")
+    .Validate(o => o.Workers is >= 1 and <= 64, "Bot:Workers must be between 1 and 64.")
     .ValidateOnStart();
 
 builder.Services.AddHttpClient<IHireFlowApiClient, HireFlowApiClient>((sp, http) =>
@@ -33,6 +34,18 @@ builder.Services.AddHttpClient("telegram")
 builder.Services.AddScoped<IChatGateway, TelegramChatGateway>();
 builder.Services.AddScoped<DialogHandler>();
 
+builder.Services.AddSingleton(sp =>
+{
+    var scopes = sp.GetRequiredService<IServiceScopeFactory>();
+    return new UpdateDispatcher(
+        sp.GetRequiredService<IOptions<BotOptions>>().Value.Workers,
+        async (message, ct) =>
+        {
+            using var scope = scopes.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<DialogHandler>().HandleAsync(message, ct);
+        },
+        sp.GetRequiredService<ILogger<UpdateDispatcher>>());
+});
 builder.Services.AddHostedService<UpdateReceiverService>();
 builder.Services.AddHostedService<NotificationDispatcherService>();
 

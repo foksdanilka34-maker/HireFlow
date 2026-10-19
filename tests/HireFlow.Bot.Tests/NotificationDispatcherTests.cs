@@ -1,5 +1,7 @@
 using HireFlow.Bot.Api;
+using HireFlow.Bot.Telegram;
 using HireFlow.Bot.Tests.Fakes;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -11,10 +13,20 @@ public class NotificationDispatcherTests
     private readonly FakeHireFlowApiClient _api = new();
     private readonly FakeChatGateway _chat = new();
 
-    // Сервис без scope: итерацию запускаем перегрузкой, которая принимает готовые фейки.
-    private Task RunOnceAsync() =>
-        new NotificationDispatcherService(null!, Options.Create(new BotOptions()), NullLogger<NotificationDispatcherService>.Instance)
-            .RunOnceAsync(_api, _chat, CancellationToken.None);
+    // Сервис с настоящей фабрикой scope: клиенты API и Telegram берутся из DI, как в работе бота.
+    private async Task RunOnceAsync()
+    {
+        await using var provider = new ServiceCollection()
+            .AddScoped<IHireFlowApiClient>(_ => _api)
+            .AddScoped<IChatGateway>(_ => _chat)
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        var service = new NotificationDispatcherService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            Options.Create(new BotOptions()),
+            NullLogger<NotificationDispatcherService>.Instance);
+
+        await service.RunOnceAsync(CancellationToken.None);
+    }
 
     [Theory]
     [InlineData(NotificationKind.Invited, "Вас приглашают на созвон по вакансии «QA». Рекрутер свяжется с вами.")]

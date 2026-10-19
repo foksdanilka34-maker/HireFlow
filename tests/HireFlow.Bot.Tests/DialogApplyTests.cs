@@ -84,7 +84,7 @@ public class DialogApplyTests
 
         await _bot.SendAsync("1");
 
-        Assert.Equal($"Вы уже откликались на «A», статус: Приглашение на созвон.", _bot.Last);
+        Assert.Equal("Вы уже откликались на «A», статус: Приглашение на созвон.", _bot.Last);
     }
 
     [Fact]

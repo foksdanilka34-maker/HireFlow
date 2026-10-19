@@ -53,6 +53,7 @@ public class CandidateApiTests(ApiAppFixture app) : ApiTestBase(app)
     [Theory]
     [InlineData("abc")]
     [InlineData("123")]
+    [InlineData("4420794609")]
     [InlineData("7999123456789012345")]
     public async Task Put_InvalidPhoneReturns400(string phone)
     {

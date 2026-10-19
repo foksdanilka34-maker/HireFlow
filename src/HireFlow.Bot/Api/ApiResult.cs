@@ -6,6 +6,7 @@ public enum ApiStatus
     BadRequest,
     NotFound,
     Conflict,
+    TooManyRequests,
     Error,
 }
 

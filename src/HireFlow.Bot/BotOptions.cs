@@ -9,4 +9,5 @@ public class BotOptions
     public string ApiKey { get; set; } = "";
     public TimeSpan NotificationPollInterval { get; set; } = TimeSpan.FromSeconds(30);
     public int PageSize { get; set; } = 3;
+    public int Workers { get; set; } = 8;
 }

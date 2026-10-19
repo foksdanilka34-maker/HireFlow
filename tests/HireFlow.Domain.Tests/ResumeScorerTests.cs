@@ -29,24 +29,24 @@ public class ResumeScorerTests
 
     [Theory]
     // Балл равен порогу / на 1 ниже порога.
-    [InlineData("alpha", "bravo,charlie", "alpha bravo", 5, 0, 90, 10, ScreeningVerdict.Passed, 90)]
-    [InlineData("alpha", "bravo,charlie", "alpha bravo", 5, 0, 91, 10, ScreeningVerdict.Borderline, 90)]
+    [InlineData("alpha", "bravo,charlie", "alpha bravo", 5, 0, 90, 10, ScreeningVerdict.Passed, 90, true)]
+    [InlineData("alpha", "bravo,charlie", "alpha bravo", 5, 0, 91, 10, ScreeningVerdict.Borderline, 90, true)]
     // Ровно один недостающий навык делает отклик пограничным, даже если балл далеко от порога.
-    [InlineData(FiveSkills, "", "alpha, bravo, charlie, delta", 5, 0, 100, 0, ScreeningVerdict.Borderline, 80)]
+    [InlineData(FiveSkills, "", "alpha, bravo, charlie, delta", 5, 0, 100, 0, ScreeningVerdict.Borderline, 80, true)]
     // Не хватает только опыта / опыт равен минимуму.
-    [InlineData("alpha,bravo", "", "alpha bravo", 2, 3, 70, 10, ScreeningVerdict.Borderline, 100)]
-    [InlineData("alpha", "", "alpha", 3, 3, 70, 10, ScreeningVerdict.Passed, 100)]
+    [InlineData("alpha,bravo", "", "alpha bravo", 2, 3, 70, 10, ScreeningVerdict.Borderline, 100, false)]
+    [InlineData("alpha", "", "alpha", 3, 3, 70, 10, ScreeningVerdict.Passed, 100, true)]
     // Балл равен порогу минус ширина зоны (два недостающих навыка) / на 1 ниже зоны.
-    [InlineData(FiveSkills, "", "alpha, bravo, charlie", 5, 0, 70, 10, ScreeningVerdict.Borderline, 60)]
-    [InlineData(FiveSkills, "", "alpha, bravo, charlie", 5, 0, 71, 10, ScreeningVerdict.Failed, 60)]
+    [InlineData(FiveSkills, "", "alpha, bravo, charlie", 5, 0, 70, 10, ScreeningVerdict.Borderline, 60, true)]
+    [InlineData(FiveSkills, "", "alpha, bravo, charlie", 5, 0, 71, 10, ScreeningVerdict.Failed, 60, true)]
     // Два недостающих навыка и балл ниже зоны.
-    [InlineData(FiveSkills, "", "alpha, bravo, charlie", 5, 0, 90, 10, ScreeningVerdict.Failed, 60)]
+    [InlineData(FiveSkills, "", "alpha, bravo, charlie", 5, 0, 90, 10, ScreeningVerdict.Failed, 60, true)]
     // Не хватает навыка и опыта: в зоне — пограничный, ниже зоны — отказ.
-    [InlineData(FiveSkills, "", "alpha, bravo, charlie, delta", 1, 5, 90, 10, ScreeningVerdict.Borderline, 80)]
-    [InlineData(FiveSkills, "", "alpha, bravo, charlie, delta", 1, 5, 95, 5, ScreeningVerdict.Failed, 80)]
+    [InlineData(FiveSkills, "", "alpha, bravo, charlie, delta", 1, 5, 90, 10, ScreeningVerdict.Borderline, 80, false)]
+    [InlineData(FiveSkills, "", "alpha, bravo, charlie, delta", 1, 5, 95, 5, ScreeningVerdict.Failed, 80, false)]
     public void Verdict_FollowsThresholdsMissingSkillsAndExperience(
         string required, string niceToHave, string resume, int years, int minYears,
-        int passingScore, int borderlineWidth, ScreeningVerdict expected, int expectedScore)
+        int passingScore, int borderlineWidth, ScreeningVerdict expected, int expectedScore, bool experienceIsEnough)
     {
         var requirements = Requirements(Split(required), Split(niceToHave), minYears, passingScore, borderlineWidth);
 
@@ -54,6 +54,7 @@ public class ResumeScorerTests
 
         Assert.Equal(expectedScore, result.Score);
         Assert.Equal(expected, result.Verdict);
+        Assert.Equal(experienceIsEnough, result.ExperienceIsEnough);
     }
 
     [Fact]

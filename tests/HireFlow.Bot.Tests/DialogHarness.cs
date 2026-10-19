@@ -47,10 +47,10 @@ internal sealed class DialogHarness
     public List<VacancyDto> AddVacancies(int count) =>
         Enumerable.Range(0, count).Select(i => AddVacancy(((char)('A' + i)).ToString())).ToList();
 
-    // Подбор возвращает вакансии; опыт, телефон в резюме и необходимость спросить опыт задаются.
+    // Подбор возвращает вакансии без статуса, как настоящий API; опыт, телефон в резюме и необходимость спросить опыт задаются.
     public void SetMatches(IEnumerable<VacancyDto> vacancies, int? years = 5, bool experienceRequired = false, bool phoneFound = true) =>
         Api.OnMatches = sent => ApiResult<MatchesDto>.Ok(
-            new MatchesDto(sent ?? years, experienceRequired && sent is null, phoneFound, [.. vacancies]));
+            new MatchesDto(sent ?? years, experienceRequired && sent is null, phoneFound, [.. vacancies.Select(v => v with { Status = null })]));
 
     // Сохраняет готовую сессию, чтобы проверить шаг без прохождения всего диалога.
     public void SeedSession(string step, BotDraft? draft = null, Guid? linkedVacancyId = null) =>

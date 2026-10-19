@@ -32,6 +32,7 @@ public partial class DialogHandler(
         public BotSessionState Session { get; set; } = new() { Step = BotSteps.AwaitingResume };
         public List<string> Replies { get; } = [];
         public bool Save { get; set; }
+        public bool Applied { get; set; }
         public Dictionary<Guid, VacancyDto> Vacancies { get; } = [];
         public HashSet<Guid> NotFound { get; } = [];
     }
@@ -49,7 +50,11 @@ public partial class DialogHandler(
             {
                 var saved = await api.PutSessionAsync(message.UserId, turn.Session, ct);
                 if (!saved.IsOk)
-                    throw new ServiceUnavailableException();
+                {
+                    if (!turn.Applied)
+                        throw new ServiceUnavailableException();
+                    logger?.LogWarning("Session save failed after application at step {Step}", turn.Session.Step);
+                }
             }
         }
         catch (ServiceUnavailableException)
@@ -206,6 +211,11 @@ public partial class DialogHandler(
             turn.Replies.Add(BotTexts.UnreadableFile);
             return;
         }
+        if (result.Status == ApiStatus.TooManyRequests)
+        {
+            turn.Replies.Add(BotTexts.UploadLimit);
+            return;
+        }
         if (!result.IsOk || result.Value is null)
             throw new ServiceUnavailableException();
 
@@ -264,6 +274,11 @@ public partial class DialogHandler(
             turn.Replies.Add(BotTexts.UnreadableFile);
             return;
         }
+        if (result.Status == ApiStatus.TooManyRequests)
+        {
+            turn.Replies.Add(BotTexts.UploadLimit);
+            return;
+        }
         if (!result.IsOk || result.Value is null)
             throw new ServiceUnavailableException();
 
@@ -291,9 +306,8 @@ public partial class DialogHandler(
             await PruneUnavailableAsync(turn, ct, rollbackPage: false);
             if (draft.Page * _pageSize >= draft.VacancyIds.Count)
             {
-                var lastPage = draft.VacancyIds.Count == 0 ? 0 : (draft.VacancyIds.Count - 1) / _pageSize;
-                draft.Page = Math.Max(0, Math.Min(target - 1, lastPage));
-                turn.Replies.Add(draft.VacancyIds.Count == 0 ? BotTexts.NoMatches(null) : BotTexts.NoMoreVacancies);
+                draft.Page = target - 1;
+                turn.Replies.Add(BotTexts.NoMoreVacancies);
                 return;
             }
 
@@ -520,6 +534,7 @@ public partial class DialogHandler(
         switch (result.Status)
         {
             case ApiStatus.Ok:
+                turn.Applied = true;
                 draft.PendingVacancyId = null;
                 if (session.LinkedVacancyId == vacancyId)
                     session.LinkedVacancyId = null;

@@ -182,22 +182,43 @@ public class DialogMatchingTests
     }
 
     [Fact]
-    public async Task List_DoesNotShowClosedVacancyAndNumbersOnlyShownOnes()
+    public async Task More_SkipsVacancyClosedAfterMatchingAndNumbersOnlyShownOnes()
     {
-        var first = _bot.AddVacancy("Первая");
-        var closed = _bot.AddVacancy("Закрытая", status: "closed");
-        var third = _bot.AddVacancy("Третья");
-        _bot.SetMatches([first, closed, third]);
-
+        var vacancies = _bot.AddVacancies(5);
+        _bot.SetMatches(vacancies);
         await _bot.SendDocumentAsync();
+        Assert.Contains("3. C (QA)", _bot.Last);
+        _bot.Api.Vacancies[vacancies[3].Id] = vacancies[3] with { Status = "closed" };
 
-        Assert.Contains("1. Первая (QA)", _bot.Last);
-        Assert.Contains("2. Третья (QA)", _bot.Last);
-        Assert.DoesNotContain("Закрытая", _bot.Last);
+        await _bot.SendAsync("ещё");
 
-        await _bot.SendAsync("2");
+        Assert.Contains("4. E (QA)", _bot.Last);
+        Assert.DoesNotContain("D (QA)", _bot.Last);
 
-        Assert.Equal(third.Id, _bot.Api.ApplicationCalls.Single().VacancyId);
+        await _bot.SendAsync("4");
+
+        Assert.Equal(vacancies[4].Id, _bot.Api.ApplicationCalls.Single().VacancyId);
+    }
+
+    [Fact]
+    public async Task More_WhenWholeNextPageIsClosedSaysNoMoreAndKeepsCurrentPage()
+    {
+        var vacancies = _bot.AddVacancies(5);
+        _bot.SetMatches(vacancies);
+        await _bot.SendDocumentAsync();
+        _bot.Api.Vacancies[vacancies[3].Id] = vacancies[3] with { Status = "closed" };
+        _bot.Api.Vacancies[vacancies[4].Id] = vacancies[4] with { Status = "closed" };
+
+        await _bot.SendAsync("ещё");
+
+        Assert.Equal(BotTexts.NoMoreVacancies, _bot.Last);
+        Assert.Equal(BotSteps.ChoosingVacancy, _bot.Session.Step);
+        Assert.Equal(0, _bot.Session.Draft.Page);
+        Assert.Equal([vacancies[0].Id, vacancies[1].Id, vacancies[2].Id], _bot.Session.Draft.VacancyIds);
+
+        await _bot.SendAsync("3");
+
+        Assert.Equal(vacancies[2].Id, _bot.Api.ApplicationCalls.Single().VacancyId);
     }
 
     [Fact]
@@ -218,5 +239,23 @@ public class DialogMatchingTests
         Assert.DoesNotContain(BotTexts.AskPhone, _bot.AllReplies);
         Assert.NotEqual(BotSteps.AwaitingPhone, _bot.Session.Step);
         Assert.Empty(_bot.Api.ApplicationCalls);
+    }
+
+    [Fact]
+    public async Task More_AfterLinkedVacancyIsClosedDropsLinkAndZeroOption()
+    {
+        var linked = _bot.AddVacancy("Ссылочная");
+        var vacancies = _bot.AddVacancies(4);
+        _bot.SetMatches(vacancies);
+        await _bot.SendAsync($"/start {linked.Id}");
+        await _bot.SendDocumentAsync();
+        Assert.Contains("0 — всё равно откликнуться на «Ссылочная»", _bot.Last);
+        _bot.Api.Vacancies[linked.Id] = linked with { Status = "closed" };
+
+        await _bot.SendAsync("ещё");
+
+        Assert.Contains("4. D (QA)", _bot.Last);
+        Assert.DoesNotContain("0 —", _bot.Last);
+        Assert.Null(_bot.Session.LinkedVacancyId);
     }
 }

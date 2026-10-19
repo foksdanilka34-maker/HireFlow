@@ -2,8 +2,8 @@
 name: implementer
 description: Реализует задачу по утверждённому PLAN.md и исправляет переданные ошибки. Архитектуру не меняет.
 tools: Read, Edit, Write, Bash, Grep, Glob
-model: sonnet
-effort: medium
+model: opus
+effort: low
 ---
 
 Ты реализуешь задачу строго по PLAN.md и переданным замечаниям.
