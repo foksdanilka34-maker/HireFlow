@@ -10,30 +10,36 @@ namespace HireFlow.Bot;
 
 public class UpdateReceiverService(
     IServiceScopeFactory scopes,
+    UpdateDispatcher dispatcher,
     ILogger<UpdateReceiverService> logger) : BackgroundService
 {
     private const int LongPollSeconds = 30;
     private static readonly TimeSpan ErrorDelay = TimeSpan.FromSeconds(5);
 
-    // Читает обновления Telegram long polling'ом и обрабатывает сообщения строго по одному.
+    // Читает обновления Telegram long polling'ом и передаёт сообщения в очереди; при остановке дожидается их обработки.
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("Update receiver started");
         var offset = 0;
+        dispatcher.Start();
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                using var pollScope = scopes.CreateScope();
-                var client = pollScope.ServiceProvider.GetRequiredService<ITelegramBotClient>();
-                var updates = await client.GetUpdates(
-                    offset, timeout: LongPollSeconds, allowedUpdates: [UpdateType.Message], cancellationToken: stoppingToken);
+                Update[] updates;
+                using (var pollScope = scopes.CreateScope())
+                {
+                    var client = pollScope.ServiceProvider.GetRequiredService<ITelegramBotClient>();
+                    updates = await client.GetUpdates(
+                        offset, timeout: LongPollSeconds, allowedUpdates: [UpdateType.Message], cancellationToken: stoppingToken);
+                }
 
                 foreach (var update in updates)
                 {
                     offset = update.Id + 1;
-                    await ProcessAsync(update, stoppingToken);
+                    if (Map(update) is { } message)
+                        await dispatcher.EnqueueAsync(message, stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -47,26 +53,8 @@ public class UpdateReceiverService(
             }
         }
 
+        await dispatcher.CompleteAsync();
         logger.LogInformation("Update receiver stopped");
-    }
-
-    // Обрабатывает одно обновление; исключение не прерывает цикл.
-    private async Task ProcessAsync(Update update, CancellationToken ct)
-    {
-        try
-        {
-            var message = Map(update);
-            if (message is not null)
-            {
-                using var scope = scopes.CreateScope();
-                var dialog = scope.ServiceProvider.GetRequiredService<DialogHandler>();
-                await dialog.HandleAsync(message, ct);
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-        {
-            logger.LogError("Message handling failed: {ErrorType}", ex.GetType().Name);
-        }
     }
 
     // Превращает обновление Telegram в сообщение диалога; не личный чат или не сообщение — null.

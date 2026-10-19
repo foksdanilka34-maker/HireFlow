@@ -7,6 +7,9 @@ using Microsoft.Extensions.Options;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+// Время на дообработку очередей сообщений при остановке.
+builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(60));
+
 builder.Services.AddOptions<BotOptions>()
     .Bind(builder.Configuration.GetSection(BotOptions.SectionName))
     .Validate(o => !string.IsNullOrWhiteSpace(o.TelegramToken),

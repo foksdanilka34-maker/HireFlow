@@ -113,6 +113,18 @@ public class DialogEntryTests
         Assert.Null(_bot.Session.Draft.ResumeFileId);
     }
 
+    [Fact]
+    public async Task Document_TooManyUploadsSaysLimitAndKeepsStep()
+    {
+        await _bot.SendAsync("/start");
+        _bot.Api.OnMatches = _ => ApiResult<MatchesDto>.Failure(ApiStatus.TooManyRequests);
+
+        await _bot.SendDocumentAsync();
+
+        Assert.Equal(BotTexts.UploadLimit, _bot.Last);
+        Assert.Equal(BotSteps.AwaitingResume, _bot.Session.Step);
+    }
+
     [Theory]
     [InlineData("api")]
     [InlineData("download")]

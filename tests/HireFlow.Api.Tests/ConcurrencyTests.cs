@@ -1,6 +1,8 @@
 using System.Text.Json;
 using HireFlow.Api.Errors;
 using HireFlow.Api.Tests.Infrastructure;
+using HireFlow.Application.Common;
+using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
 using HireFlow.Domain.Notifications;
 using HireFlow.Infrastructure.Persistence;
@@ -62,22 +64,47 @@ public class ConcurrencyTests(ApiAppFixture app) : ApiTestBase(app)
         Assert.Equal(NotificationStatus.Sent, rejection.Status);
     }
 
-    [Fact]
-    public async Task ConcurrencyConflict_Returns409()
+    // Вызывает обработчик ошибок напрямую и возвращает статус и тело ProblemDetails.
+    private async Task<(int Status, JsonElement Body)> HandleAsync(Exception exception)
     {
         var handler = new AppExceptionHandler(App.Services.GetRequiredService<IProblemDetailsService>());
         var context = new DefaultHttpContext { RequestServices = App.Services };
         context.Response.Body = new MemoryStream();
 
-        var handled = await handler.TryHandleAsync(context, new DbUpdateConcurrencyException(), CancellationToken.None);
+        Assert.True(await handler.TryHandleAsync(context, exception, CancellationToken.None));
 
-        Assert.True(handled);
-        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
         context.Response.Body.Position = 0;
         using var body = await JsonDocument.ParseAsync(context.Response.Body);
-        Assert.Equal(409, body.RootElement.GetProperty("status").GetInt32());
+        return (context.Response.StatusCode, body.RootElement.Clone());
+    }
+
+    [Fact]
+    public async Task ConcurrencyConflict_Returns409()
+    {
+        var (status, body) = await HandleAsync(new DbUpdateConcurrencyException());
+
+        Assert.Equal(StatusCodes.Status409Conflict, status);
+        Assert.Equal(409, body.GetProperty("status").GetInt32());
         Assert.Equal(
             "The record was changed by another request. Reload and try again.",
-            body.RootElement.GetProperty("detail").GetString());
+            body.GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task DuplicateCandidate_SecondSaveThrowsConflictAndHandlerReturns409()
+    {
+        var telegramId = NewTelegramId();
+        await using var scope1 = App.Services.CreateAsyncScope();
+        await using var scope2 = App.Services.CreateAsyncScope();
+        var db1 = scope1.ServiceProvider.GetRequiredService<AppDbContext>();
+        var db2 = scope2.ServiceProvider.GetRequiredService<AppDbContext>();
+        db1.Candidates.Add(new Candidate(telegramId, "Иван", "+79991234567"));
+        db2.Candidates.Add(new Candidate(telegramId, "Иван", "+79991234567"));
+        await db1.SaveChangesAsync();
+
+        var conflict = await Assert.ThrowsAsync<ConflictException>(() => db2.SaveChangesAsync());
+
+        var (status, _) = await HandleAsync(conflict);
+        Assert.Equal(StatusCodes.Status409Conflict, status);
     }
 }

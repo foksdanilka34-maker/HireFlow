@@ -19,6 +19,7 @@ public class ApiFactory(string connectionString, string storagePath) : WebApplic
         builder.UseSetting("ConnectionStrings:Postgres", connectionString);
         builder.UseSetting("Storage:LocalPath", storagePath);
         builder.UseSetting("BotApi:ApiKey", BotApiKey);
+        builder.UseSetting("ResumeUploads:DailyLimit", "3");
         builder.UseSetting("Notifications:RejectionDelay", RejectionDelay.ToString());
     }
 }

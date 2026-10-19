@@ -61,6 +61,32 @@ public class DialogApplyTests
     }
 
     [Fact]
+    public async Task Apply_AcceptedThenSessionSaveFailsStillTellsApplicationAccepted()
+    {
+        await ReachListAsync(phoneFound: true, candidateExists: true);
+        _bot.Api.FailPutSession = true;
+
+        await _bot.SendAsync("1");
+
+        Assert.Equal(BotTexts.Applied("A"), _bot.Last);
+        Assert.Single(_bot.Api.ApplicationCalls);
+    }
+
+    [Fact]
+    public async Task SessionSaveFailureWithoutApplicationAnswersError()
+    {
+        _bot.Api.CandidateExists = true;
+        _bot.SetMatches(_bot.AddVacancies(4));
+        await _bot.SendDocumentAsync();
+        _bot.Api.FailPutSession = true;
+
+        await _bot.SendAsync("ещё");
+
+        Assert.Equal(BotTexts.Error, _bot.Last);
+        Assert.Empty(_bot.Api.ApplicationCalls);
+    }
+
+    [Fact]
     public async Task Apply_SuccessKeepsListForNextChoice()
     {
         var vacancies = _bot.AddVacancies(2);

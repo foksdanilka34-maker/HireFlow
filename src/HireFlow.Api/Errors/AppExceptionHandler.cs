@@ -15,6 +15,8 @@ public class AppExceptionHandler(IProblemDetailsService problemDetails) : IExcep
             NotFoundException => StatusCodes.Status404NotFound,
             BadRequestException => StatusCodes.Status400BadRequest,
             DomainException => StatusCodes.Status409Conflict,
+            ConflictException => StatusCodes.Status409Conflict,
+            TooManyRequestsException => StatusCodes.Status429TooManyRequests,
             DbUpdateConcurrencyException => StatusCodes.Status409Conflict,
             BadHttpRequestException badRequest => badRequest.StatusCode,
             _ => null,

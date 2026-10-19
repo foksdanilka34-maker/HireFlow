@@ -12,13 +12,13 @@ POST {{host}}/vacancies
 Content-Type: application/json
 
 {
-  "title": "C# Developer",
+  "title": "Go Developer",
   "direction": "Разработка",
-  "description": "Разработка сервиса найма",
+  "description": "Разработка сервиса уведомлений",
   "requirements": {
     "requiredSkills": [
-      { "name": "C#", "synonyms": [".NET", "dotnet"] },
-      { "name": "ASP.NET", "synonyms": ["ASP.NET Core"] },
+      { "name": "Go", "synonyms": ["Golang", "Goland"] },
+      { "name": "Kafka", "synonyms": ["RabbitMq"] },
       { "name": "SQL", "synonyms": ["PostgreSQL", "MS SQL"] }
     ],
     "niceToHaveSkills": [{ "name": "Docker" }],

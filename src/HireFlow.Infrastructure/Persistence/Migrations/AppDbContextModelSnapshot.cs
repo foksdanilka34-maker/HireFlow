@@ -321,6 +321,38 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                     b.ToTable("notifications", (string)null);
                 });
 
+            modelBuilder.Entity("HireFlow.Domain.Resumes.ResumeUpload", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("uuidv7()");
+
+                    b.Property<string>("FileHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("file_hash");
+
+                    b.Property<long>("TelegramId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("telegram_id");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("uploaded_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_resume_uploads");
+
+                    b.HasIndex("TelegramId", "FileHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_resume_uploads_telegram_id_file_hash");
+
+                    b.ToTable("resume_uploads", (string)null);
+                });
+
             modelBuilder.Entity("HireFlow.Domain.Vacancies.Vacancy", b =>
                 {
                     b.Property<Guid>("Id")
