@@ -16,11 +16,11 @@ public static class VacancyEndpoints
             EnumQuery.TryParse<VacancyStatus>(status, out var parsed)
                 ? Results.Ok(await service.GetAllAsync(parsed, ct))
                 : Results.Problem($"Unknown status '{status}'.", statusCode: StatusCodes.Status400BadRequest))
-            .RequireBotApiKey();
+            .RequireAuthorization(AuthPolicies.RecruiterOrBot);
 
         group.MapGet("/{id:guid}", (Guid id, IVacancyService service, CancellationToken ct) =>
             service.GetAsync(id, ct))
-            .RequireBotApiKey();
+            .RequireAuthorization(AuthPolicies.RecruiterOrBot);
 
         group.MapPost("/", async (VacancyRequest request, IVacancyService service, CancellationToken ct) =>
         {

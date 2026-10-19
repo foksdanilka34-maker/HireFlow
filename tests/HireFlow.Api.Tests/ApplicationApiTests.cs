@@ -204,6 +204,9 @@ public class ApplicationApiTests(ApiAppFixture app) : ApiTestBase(app)
         var application = await ReadAsync<ApplicationResponse>(response);
         Assert.Equal(created.Id, application.Id);
         Assert.Equal(ApplicationStatus.Invited, application.Status);
+        Assert.Equal(vacancy.Title, application.VacancyTitle);
+        Assert.Equal(candidate.Name, application.CandidateName);
+        Assert.Equal(candidate.Phone, application.CandidatePhone);
         Assert.Equal(
             [
                 (null, ApplicationStatus.Received),

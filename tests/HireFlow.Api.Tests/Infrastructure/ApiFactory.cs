@@ -4,10 +4,14 @@ using Microsoft.AspNetCore.Mvc.Testing;
 namespace HireFlow.Api.Tests.Infrastructure;
 
 // Фабрика приложения: строка подключения и папка хранилища задаются так, чтобы Program увидел их до Build().
-public class ApiFactory(string connectionString, string storagePath) : WebApplicationFactory<Program>
+public class ApiFactory(string connectionString, string storagePath, int loginAttemptsPerMinute = ApiFactory.DefaultLoginAttempts)
+    : WebApplicationFactory<Program>
 {
     // Служебный ключ бота для тестов: без него API не стартует.
     public const string BotApiKey = "test-bot-api-key";
+
+    // Лимит попыток входа по умолчанию: большой, чтобы входы фикстур и тестов не упирались в 429.
+    public const int DefaultLoginAttempts = 1000;
 
     // Задержка отказа задаётся явно, чтобы тесты не зависели от appsettings.json.
     public static readonly TimeSpan RejectionDelay = TimeSpan.FromHours(4);
@@ -21,5 +25,6 @@ public class ApiFactory(string connectionString, string storagePath) : WebApplic
         builder.UseSetting("BotApi:ApiKey", BotApiKey);
         builder.UseSetting("ResumeUploads:DailyLimit", "3");
         builder.UseSetting("Notifications:RejectionDelay", RejectionDelay.ToString());
+        builder.UseSetting("RecruiterAuth:LoginAttemptsPerMinute", loginAttemptsPerMinute.ToString());
     }
 }

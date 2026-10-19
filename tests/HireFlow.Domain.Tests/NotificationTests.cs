@@ -14,7 +14,7 @@ public class NotificationTests
     {
         var application = AutoRejectedApplication();
         var rejection = application.Notifications.Single();
-        application.Invite(null);
+        application.Invite(RecruiterId, null);
         return rejection;
     }
 

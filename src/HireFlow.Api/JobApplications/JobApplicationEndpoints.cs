@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
+using HireFlow.Api.Auth;
 using HireFlow.Api.Common;
 using HireFlow.Api.Security;
 using HireFlow.Application.JobApplications;
@@ -44,7 +46,7 @@ public static class JobApplicationEndpoints
             return Results.Created($"/applications/{application.Id}", application);
         })
         .DisableAntiforgery()
-        .RequireBotApiKey();
+        .RequireAuthorization(AuthPolicies.Bot);
 
         group.MapGet("/", async (Guid? vacancyId, string? status, IJobApplicationService service, CancellationToken ct) =>
             EnumQuery.TryParse<ApplicationStatus>(status, out var parsed)
@@ -54,7 +56,14 @@ public static class JobApplicationEndpoints
         group.MapGet("/{id:guid}", (Guid id, IJobApplicationService service, CancellationToken ct) =>
             service.GetAsync(id, ct));
 
-        group.MapPost("/{id:guid}/decision", (Guid id, DecisionRequest request, IJobApplicationService service, CancellationToken ct) =>
-            service.DecideAsync(id, request, ct));
+        group.MapPost("/{id:guid}/decision",
+            (Guid id, DecisionRequest request, ClaimsPrincipal user, IJobApplicationService service, CancellationToken ct) =>
+                service.DecideAsync(id, user.GetRecruiterId(), request, ct));
+
+        group.MapGet("/{id:guid}/resume", async (Guid id, IJobApplicationService service, CancellationToken ct) =>
+        {
+            var file = await service.GetResumeAsync(id, ct);
+            return Results.File(file.Content, file.ContentType, fileDownloadName: file.FileName);
+        });
     }
 }

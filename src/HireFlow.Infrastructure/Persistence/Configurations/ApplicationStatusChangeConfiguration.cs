@@ -1,4 +1,5 @@
 using HireFlow.Domain.JobApplications;
+using HireFlow.Domain.Recruiters;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -25,5 +26,10 @@ public class ApplicationStatusChangeConfiguration : IEntityTypeConfiguration<App
             .HasMaxLength(20);
 
         builder.Property(h => h.Reason).HasMaxLength(ApplicationStatusChange.ReasonMaxLength);
+
+        builder.HasOne<Recruiter>()
+            .WithMany()
+            .HasForeignKey(h => h.RecruiterId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

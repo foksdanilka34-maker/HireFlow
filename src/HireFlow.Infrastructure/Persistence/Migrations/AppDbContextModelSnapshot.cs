@@ -141,6 +141,10 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("reason");
 
+                    b.Property<Guid?>("RecruiterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recruiter_id");
+
                     b.Property<string>("ToStatus")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -152,6 +156,9 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ApplicationId")
                         .HasDatabaseName("ix_application_status_history_application_id");
+
+                    b.HasIndex("RecruiterId")
+                        .HasDatabaseName("ix_application_status_history_recruiter_id");
 
                     b.ToTable("application_status_history", (string)null);
                 });
@@ -321,6 +328,40 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                     b.ToTable("notifications", (string)null);
                 });
 
+            modelBuilder.Entity("HireFlow.Domain.Recruiters.Recruiter", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("uuidv7()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Login")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("login");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("password_hash");
+
+                    b.HasKey("Id")
+                        .HasName("pk_recruiters");
+
+                    b.HasIndex("Login")
+                        .IsUnique()
+                        .HasDatabaseName("ix_recruiters_login");
+
+                    b.ToTable("recruiters", (string)null);
+                });
+
             modelBuilder.Entity("HireFlow.Domain.Resumes.ResumeUpload", b =>
                 {
                     b.Property<Guid>("Id")
@@ -457,6 +498,12 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_application_status_history_applications_application_id");
+
+                    b.HasOne("HireFlow.Domain.Recruiters.Recruiter", null)
+                        .WithMany()
+                        .HasForeignKey("RecruiterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_application_status_history_recruiters_recruiter_id");
                 });
 
             modelBuilder.Entity("HireFlow.Domain.JobApplications.JobApplication", b =>

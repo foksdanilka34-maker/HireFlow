@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
+using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
 using HireFlow.Domain.Screening;
+using HireFlow.Domain.Vacancies;
 
 namespace HireFlow.Application.JobApplications;
 
@@ -44,12 +46,16 @@ public record StatusChangeResponse(
     ApplicationStatus ToStatus,
     StatusChangedBy ChangedBy,
     string? Reason,
-    DateTime ChangedAt);
+    DateTime ChangedAt,
+    string? RecruiterLogin);
 
 public record ApplicationResponse(
     Guid Id,
     Guid VacancyId,
+    string VacancyTitle,
     Guid CandidateId,
+    string CandidateName,
+    string CandidatePhone,
     ApplicationStatus Status,
     int YearsOfExperience,
     string ResumeFileName,
@@ -58,13 +64,19 @@ public record ApplicationResponse(
     DateTime UpdatedAt,
     List<StatusChangeResponse> History)
 {
-    // Собирает ответ API из сущности.
-    public static ApplicationResponse From(JobApplication a) => new(
-        a.Id, a.VacancyId, a.CandidateId, a.Status, a.YearsOfExperience, a.ResumeFileName, a.Screening,
+    // Собирает ответ API из отклика, вакансии, кандидата и логинов рекрутеров из истории.
+    public static ApplicationResponse From(
+        JobApplication a, Vacancy vacancy, Candidate candidate, IReadOnlyDictionary<Guid, string> recruiterLogins) => new(
+        a.Id, a.VacancyId, vacancy.Title, a.CandidateId, candidate.Name, candidate.Phone,
+        a.Status, a.YearsOfExperience, a.ResumeFileName, a.Screening,
         a.CreatedAt, a.UpdatedAt,
         a.History
             .OrderBy(h => h.ChangedAt)
             .ThenBy(h => h.Id)
-            .Select(h => new StatusChangeResponse(h.FromStatus, h.ToStatus, h.ChangedBy, h.Reason, h.ChangedAt))
+            .Select(h => new StatusChangeResponse(
+                h.FromStatus, h.ToStatus, h.ChangedBy, h.Reason, h.ChangedAt,
+                h.RecruiterId is { } rid ? recruiterLogins.GetValueOrDefault(rid) : null))
             .ToList());
 }
+
+public record ResumeFile(Stream Content, string FileName, string ContentType);

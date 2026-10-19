@@ -6,7 +6,7 @@
 # Загружает .env в окружение команды: dotnet run сам .env не читает.
 ENV := set -a; . ./.env; set +a;
 
-.PHONY: help run db migrate api bot test stop reset-db
+.PHONY: help run db migrate api bot test stop reset-db recruiter
 
 help:
 	@echo "make run       база + миграции + API и бот"
@@ -15,6 +15,7 @@ help:
 	@echo "make api       только API (http://localhost:5184)"
 	@echo "make bot       только бот"
 	@echo "make test      все тесты"
+	@echo "make recruiter LOGIN=anna  создать рекрутера или сменить ему пароль"
 	@echo "make stop      остановить PostgreSQL"
 	@echo "make reset-db  удалить базу и создать заново (данные пропадут)"
 
@@ -42,6 +43,10 @@ run: migrate
 
 test:
 	dotnet test
+
+recruiter: migrate
+	@test -n "$(LOGIN)" || (echo "Укажите логин: make recruiter LOGIN=anna" && exit 1)
+	$(ENV) dotnet run --project src/HireFlow.Api -- recruiter $(LOGIN)
 
 stop:
 	docker compose stop postgres

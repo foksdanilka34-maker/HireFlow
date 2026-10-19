@@ -91,6 +91,30 @@ public class DecisionApiTests(ApiAppFixture app) : ApiTestBase(app)
     }
 
     [Fact]
+    public async Task Decision_RecordsRecruiterFromSessionInResponseAndCard()
+    {
+        var created = await CreateReviewApplicationAsync();
+        // Решает не рекрутер основного клиента, а другой: логин берётся из сессии, а не «первый попавшийся».
+        var login = "r-" + Guid.NewGuid().ToString("N")[..12];
+        await App.CreateRecruiterAsync(login, "password-123");
+        using var other = await App.CreateRecruiterClientAsync(login, "password-123");
+
+        var response = await other.PostAsJsonAsync(
+            $"/applications/{created.Id}/decision", new { decision = "invite" }, Json);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var decided = await ReadAsync<ApplicationResponse>(response);
+        var card = await ReadAsync<ApplicationResponse>(await Client.GetAsync($"/applications/{created.Id}"));
+        foreach (var application in new[] { decided, card })
+        {
+            Assert.Equal(login, application.History[^1].RecruiterLogin);
+            Assert.All(application.History.SkipLast(1), h => Assert.Null(h.RecruiterLogin));
+        }
+        Assert.Equal(card.VacancyTitle, decided.VacancyTitle);
+        Assert.Equal(card.CandidatePhone, decided.CandidatePhone);
+    }
+
+    [Fact]
     public async Task Decision_WithoutDecisionReturns400()
     {
         var created = await CreateReviewApplicationAsync();

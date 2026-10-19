@@ -75,30 +75,30 @@ public class JobApplication
     }
 
     // Приглашает на созвон: из очереди рекрутера или из автоотказа, если рекрутер не согласен с системой.
-    public void Invite(string? comment)
+    public void Invite(Guid recruiterId, string? comment)
     {
         if (Status is not (ApplicationStatus.RecruiterReview or ApplicationStatus.AutoRejected))
             throw new DomainException("Only an application under review or auto-rejected can be invited.");
 
         CancelPendingNotifications();
-        ChangeStatus(ApplicationStatus.Invited, StatusChangedBy.Recruiter, comment);
+        ChangeStatus(ApplicationStatus.Invited, StatusChangedBy.Recruiter, comment, recruiterId);
         Notify(NotificationType.Invited, TimeSpan.Zero);
     }
 
     // Отказывает по решению рекрутера; уведомление уйдёт кандидату с задержкой.
-    public void Reject(string? comment, TimeSpan rejectionDelay)
+    public void Reject(Guid recruiterId, string? comment, TimeSpan rejectionDelay)
     {
         if (Status != ApplicationStatus.RecruiterReview)
             throw new DomainException("Only an application under review can be rejected.");
 
-        ChangeStatus(ApplicationStatus.Rejected, StatusChangedBy.Recruiter, comment);
+        ChangeStatus(ApplicationStatus.Rejected, StatusChangedBy.Recruiter, comment, recruiterId);
         Notify(NotificationType.Rejected, rejectionDelay);
     }
 
-    // Меняет статус и записывает переход в историю.
-    private void ChangeStatus(ApplicationStatus newStatus, StatusChangedBy changedBy, string? reason)
+    // Меняет статус и записывает переход в историю (с рекрутером, если решение его).
+    private void ChangeStatus(ApplicationStatus newStatus, StatusChangedBy changedBy, string? reason, Guid? recruiterId = null)
     {
-        _history.Add(new ApplicationStatusChange(Status, newStatus, changedBy, reason));
+        _history.Add(new ApplicationStatusChange(Status, newStatus, changedBy, reason, recruiterId));
 
         Status = newStatus;
         UpdatedAt = DateTime.UtcNow;

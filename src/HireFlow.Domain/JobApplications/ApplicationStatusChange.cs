@@ -10,18 +10,20 @@ public class ApplicationStatusChange
     public ApplicationStatus ToStatus { get; private set; }
     public StatusChangedBy ChangedBy { get; private set; }
     public string? Reason { get; private set; }
+    public Guid? RecruiterId { get; private set; }
     public DateTime ChangedAt { get; private set; }
 
     // Нужен EF Core для создания объекта при чтении из БД.
     private ApplicationStatusChange() { }
 
     // Создаёт запись истории. Вызывается только из JobApplication.
-    internal ApplicationStatusChange(ApplicationStatus? from, ApplicationStatus to, StatusChangedBy changedBy, string? reason)
+    internal ApplicationStatusChange(ApplicationStatus? from, ApplicationStatus to, StatusChangedBy changedBy, string? reason, Guid? recruiterId = null)
     {
         FromStatus = from;
         ToStatus = to;
         ChangedBy = changedBy;
         Reason = reason;
+        RecruiterId = changedBy == StatusChangedBy.Recruiter ? recruiterId : null;
         ChangedAt = DateTime.UtcNow;
     }
 }

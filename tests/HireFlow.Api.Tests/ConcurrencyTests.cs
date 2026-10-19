@@ -30,8 +30,8 @@ public class ConcurrencyTests(ApiAppFixture app) : ApiTestBase(app)
         var first = await LoadApplicationAsync(db1, application.Id);
         var second = await LoadApplicationAsync(db2, application.Id);
 
-        first.Invite(null);
-        second.Reject(null, TimeSpan.FromHours(4));
+        first.Invite(App.RecruiterId, null);
+        second.Reject(App.RecruiterId, null, TimeSpan.FromHours(4));
         await db1.SaveChangesAsync();
 
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db2.SaveChangesAsync());
@@ -55,7 +55,7 @@ public class ConcurrencyTests(ApiAppFixture app) : ApiTestBase(app)
         var recruiterView = await LoadApplicationAsync(db1, application.Id);
         var botView = await db2.Notifications.SingleAsync(n => n.Id == rejectionId);
 
-        recruiterView.Invite(null);
+        recruiterView.Invite(App.RecruiterId, null);
         botView.MarkSent();
         await db2.SaveChangesAsync();
 

@@ -3,6 +3,7 @@ using HireFlow.Application.Candidates;
 using HireFlow.Application.JobApplications;
 using HireFlow.Application.Matching;
 using HireFlow.Application.Notifications;
+using HireFlow.Application.Recruiters;
 using HireFlow.Application.Resumes;
 using HireFlow.Application.Vacancies;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<IVacancyMatchingService, VacancyMatchingService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IBotSessionService, BotSessionService>();
+        services.AddScoped<IRecruiterService, RecruiterService>();
         return services;
     }
 }

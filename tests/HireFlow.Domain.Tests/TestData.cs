@@ -6,6 +6,9 @@ namespace HireFlow.Domain.Tests;
 
 internal static class TestData
 {
+    // Рекрутер, от имени которого принимаются решения в тестах.
+    public static readonly Guid RecruiterId = Guid.NewGuid();
+
     // Собирает навык с синонимами.
     public static Skill Skill(string name, params string[] synonyms) =>
         new() { Name = name, Synonyms = [.. synonyms] };
