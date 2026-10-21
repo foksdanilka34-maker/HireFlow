@@ -1,0 +1,154 @@
+@page "/"
+@page "/vacancies"
+@inject HireFlowApiClient Api
+@inject IJSRuntime JS
+@inject IConfiguration Config
+
+<PageTitle>Вакансии — HireFlow</PageTitle>
+
+<div class="d-flex align-items-center mb-3">
+    <h1 class="h3 me-auto mb-0">Вакансии</h1>
+    <a class="btn btn-primary" href="vacancies/new">Новая вакансия</a>
+</div>
+
+<div class="btn-group mb-3">
+    <button class="btn @(archive ? "btn-outline-secondary" : "btn-secondary")" @onclick="() => SwitchAsync(false)">Активные</button>
+    <button class="btn @(archive ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => SwitchAsync(true)">Архив</button>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (vacancies is null)
+{
+    <p>Загрузка…</p>
+}
+else if (vacancies.Count == 0)
+{
+    <p>Вакансий нет.</p>
+}
+else
+{
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Название</th>
+                <th>Направление</th>
+                <th>Статус</th>
+                <th>Изменена</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var v in vacancies)
+            {
+                <tr @key="v.Id">
+                    <td>@v.Title</td>
+                    <td>@v.Direction</td>
+                    <td>@VacancyStatusText.Name(v.Status)</td>
+                    <td>@v.UpdatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                    <td class="text-end text-nowrap">
+                        @if (v.Status == VacancyStatus.Open)
+                        {
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => CopyLinkAsync(v)">Скопировать ссылку</button>
+                            @if (copiedId == v.Id)
+                            {
+                                <span class="text-success me-2">Скопировано</span>
+                            }
+                        }
+                        @foreach (var action in VacancyStatusText.Actions(v.Status))
+                        {
+                            <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => RunAsync(v, action)">@VacancyStatusText.ActionName(action)</button>
+                        }
+                        @if (VacancyStatusText.CanEdit(v.Status))
+                        {
+                            <a class="btn btn-sm btn-outline-secondary me-1" href="vacancies/@v.Id/edit">Редактировать</a>
+                        }
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(v)">Удалить</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<VacancyDto>? vacancies;
+    private bool archive;
+    private string? error;
+    private Guid? copiedId;
+
+    // Загружает список при открытии страницы.
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    // Загружает активные (открытые и закрытые) или архивные вакансии.
+    private async Task LoadAsync()
+    {
+        var result = await Api.GetVacanciesAsync(archive ? VacancyStatus.Archived : null);
+        if (!result.IsOk)
+        {
+            error = result.Error;
+            vacancies = [];
+            return;
+        }
+
+        vacancies = result.Value!
+            .Where(v => archive || v.Status != VacancyStatus.Archived)
+            .OrderByDescending(v => v.UpdatedAt)
+            .ToList();
+    }
+
+    // Переключает фильтр «Активные» / «Архив».
+    private async Task SwitchAsync(bool toArchive)
+    {
+        archive = toArchive;
+        error = null;
+        vacancies = null;
+        await LoadAsync();
+    }
+
+    // Выполняет смену статуса и перезагружает список; ошибка остаётся видна над таблицей.
+    private async Task RunAsync(VacancyDto vacancy, VacancyAction action)
+    {
+        error = null;
+        var result = action switch
+        {
+            VacancyAction.Open => await Api.OpenAsync(vacancy.Id),
+            VacancyAction.Close => await Api.CloseAsync(vacancy.Id),
+            VacancyAction.Archive => await Api.ArchiveAsync(vacancy.Id),
+            _ => await Api.UnarchiveAsync(vacancy.Id),
+        };
+        if (!result.IsOk)
+            error = result.Error;
+        await LoadAsync();
+    }
+
+    // Удаляет вакансию после подтверждения и перезагружает список.
+    private async Task DeleteAsync(VacancyDto vacancy)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Удалить вакансию «{vacancy.Title}»?"))
+            return;
+        error = null;
+        var result = await Api.DeleteVacancyAsync(vacancy.Id);
+        if (!result.IsOk)
+            error = result.Error;
+        await LoadAsync();
+    }
+
+    // Копирует ссылку на бота с этой вакансией в буфер обмена.
+    private async Task CopyLinkAsync(VacancyDto vacancy)
+    {
+        var link = VacancyLinks.Telegram(Config["BotUsername"] ?? "", vacancy.Id);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", link);
+            copiedId = vacancy.Id;
+        }
+        catch (JSException)
+        {
+            error = $"Не удалось скопировать, ссылка: {link}";
+        }
+    }
+}

@@ -1,0 +1,82 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AuthState Auth
+@inject HireFlowApiClient Api
+@inject NavigationManager Nav
+
+<nav class="navbar navbar-expand navbar-dark bg-dark px-3 mb-3">
+    <a class="navbar-brand" href="vacancies">HireFlow</a>
+    @if (Auth.IsSignedIn)
+    {
+        <ul class="navbar-nav me-auto">
+            <li class="nav-item"><NavLink class="nav-link" href="vacancies">Вакансии</NavLink></li>
+        </ul>
+        <span class="navbar-text me-3">@Auth.Recruiter!.Login</span>
+        <button class="btn btn-outline-light btn-sm" @onclick="LogoutAsync">Выйти</button>
+    }
+</nav>
+
+<main class="container-fluid px-4">
+    @if (checking)
+    {
+        <p>Загрузка…</p>
+    }
+    else if (Auth.IsSignedIn || IsLoginPage)
+    {
+        @Body
+    }
+</main>
+
+@code {
+    private bool checking = true;
+
+    private bool IsLoginPage => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("login", StringComparison.OrdinalIgnoreCase);
+
+    // При старте проверяет, жива ли cookie-сессия.
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.Changed += OnAuthChanged;
+        Nav.LocationChanged += OnLocationChanged;
+        var me = await Api.GetMeAsync();
+        if (!me.IsOk && Auth.IsSignedIn)
+            Auth.SignOut();
+        checking = false;
+        RedirectIfSignedOut();
+    }
+
+    // Не вошёл и страница не вход — отправляет на /login с адресом возврата.
+    private void RedirectIfSignedOut()
+    {
+        if (checking || Auth.IsSignedIn || IsLoginPage)
+            return;
+        var returnUrl = "/" + Nav.ToBaseRelativePath(Nav.Uri);
+        Nav.NavigateTo($"login?returnUrl={Uri.EscapeDataString(returnUrl)}");
+    }
+
+    // Выходит и переходит на страницу входа.
+    private async Task LogoutAsync()
+    {
+        await Api.LogoutAsync();
+        Nav.NavigateTo("login");
+    }
+
+    // Перерисовывает меню при входе или выходе.
+    private void OnAuthChanged()
+    {
+        _ = InvokeAsync(() =>
+        {
+            RedirectIfSignedOut();
+            StateHasChanged();
+        });
+    }
+
+    // Проверяет доступ при переходе по страницам.
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => RedirectIfSignedOut();
+
+    // Отписывается от событий.
+    public void Dispose()
+    {
+        Auth.Changed -= OnAuthChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}

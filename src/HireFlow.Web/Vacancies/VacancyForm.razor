@@ -1,0 +1,122 @@
+@inject HireFlowApiClient Api
+@inject NavigationManager Nav
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">
+        @foreach (var line in error.Split("; "))
+        {
+            <div>@line</div>
+        }
+    </div>
+}
+
+<form @onsubmit="SaveAsync">
+    <div class="mb-3">
+        <label class="form-label" for="title">Название</label>
+        <input id="title" class="form-control" @bind="title" />
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="direction">Направление</label>
+        <input id="direction" class="form-control" list="directions" @bind="direction" />
+        <datalist id="directions">
+            @foreach (var d in directions)
+            {
+                <option value="@d"></option>
+            }
+        </datalist>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="description">Описание</label>
+        <textarea id="description" class="form-control" rows="4" @bind="description"></textarea>
+    </div>
+
+    <h2 class="h5">Обязательные навыки</h2>
+    <SkillRows Rows="required" />
+    <h2 class="h5">Желательные навыки</h2>
+    <SkillRows Rows="niceToHave" />
+    <p class="form-text">Добавьте навык, характерный для этой роли. Синонимы — через запятую.</p>
+
+    <div class="row mb-3">
+        <div class="col-sm-4">
+            <label class="form-label" for="years">Мин. опыт (лет)</label>
+            <input id="years" type="number" min="0" class="form-control" @bind="minYears" />
+        </div>
+        <div class="col-sm-4">
+            <label class="form-label" for="score">Проходной балл</label>
+            <input id="score" type="number" min="0" max="100" class="form-control" @bind="passingScore" />
+        </div>
+        <div class="col-sm-4">
+            <label class="form-label" for="borderline">Ширина пограничной зоны</label>
+            <input id="borderline" type="number" min="0" max="100" class="form-control" @bind="borderlineWidth" />
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary me-2" disabled="@busy">Сохранить</button>
+    <a class="btn btn-outline-secondary" href="vacancies">Отмена</a>
+</form>
+
+@code {
+    private const int DefaultFreezePeriodDays = 90;
+
+    // Редактируемая вакансия; null — создание новой.
+    [Parameter]
+    public VacancyDto? Vacancy { get; set; }
+
+    private string title = "";
+    private string direction = "";
+    private string? description;
+    private List<SkillRow> required = [new()];
+    private List<SkillRow> niceToHave = [new()];
+    private int minYears;
+    private int passingScore = 70;
+    private int borderlineWidth = 10;
+    private List<string> directions = [];
+    private string? error;
+    private bool busy;
+
+    // Заполняет форму и загружает направления для подсказки.
+    protected override async Task OnInitializedAsync()
+    {
+        if (Vacancy is not null)
+        {
+            title = Vacancy.Title;
+            direction = Vacancy.Direction;
+            description = Vacancy.Description;
+            required = SkillInput.ToRows(Vacancy.Requirements.RequiredSkills);
+            niceToHave = SkillInput.ToRows(Vacancy.Requirements.NiceToHaveSkills);
+            minYears = Vacancy.Requirements.MinYearsOfExperience;
+            passingScore = Vacancy.Requirements.PassingScore;
+            borderlineWidth = Vacancy.Requirements.BorderlineWidth;
+        }
+
+        var all = await Api.GetVacanciesAsync();
+        if (all.IsOk)
+            directions = all.Value!.Select(v => v.Direction).Distinct(StringComparer.OrdinalIgnoreCase).Order().ToList();
+    }
+
+    // Сохраняет вакансию и возвращает к списку; ошибки API показывает над формой.
+    private async Task SaveAsync()
+    {
+        busy = true;
+        error = null;
+        var request = new VacancyRequestDto(
+            title.Trim(),
+            direction.Trim(),
+            string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
+            new RequirementsDto(SkillInput.ToSkills(required), SkillInput.ToSkills(niceToHave), minYears, passingScore, borderlineWidth),
+            Vacancy?.FreezePeriodDays ?? DefaultFreezePeriodDays);
+
+        var result = Vacancy is null
+            ? await Api.CreateVacancyAsync(request)
+            : await Api.UpdateVacancyAsync(Vacancy.Id, request);
+        busy = false;
+
+        if (!result.IsOk)
+        {
+            error = result.Error;
+            return;
+        }
+        Nav.NavigateTo("vacancies");
+    }
+}

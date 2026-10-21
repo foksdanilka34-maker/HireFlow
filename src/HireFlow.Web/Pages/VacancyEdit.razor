@@ -1,0 +1,40 @@
+@page "/vacancies/new"
+@page "/vacancies/{Id:guid}/edit"
+@inject HireFlowApiClient Api
+
+<PageTitle>@(Id is null ? "Новая вакансия" : "Редактирование вакансии") — HireFlow</PageTitle>
+
+<h1 class="h3 mb-3">@(Id is null ? "Новая вакансия" : "Редактирование вакансии")</h1>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+else if (Id is not null && vacancy is null)
+{
+    <p>Загрузка…</p>
+}
+else
+{
+    <VacancyForm Vacancy="vacancy" />
+}
+
+@code {
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private VacancyDto? vacancy;
+    private string? error;
+
+    // Для редактирования загружает вакансию.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Id is null)
+            return;
+        var result = await Api.GetVacancyAsync(Id.Value);
+        if (result.IsOk)
+            vacancy = result.Value;
+        else
+            error = result.Error;
+    }
+}

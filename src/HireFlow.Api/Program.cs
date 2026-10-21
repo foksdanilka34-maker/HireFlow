@@ -92,6 +92,14 @@ builder.Services.AddRateLimiter(options =>
         }));
 });
 
+// Кабинет рекрутера на другом адресе ходит в API с cookie; разрешены только адреса из Web:Origins.
+var webOrigins = builder.Configuration.GetSection(WebCorsOptions.SectionName).Get<WebCorsOptions>()?.Origins ?? [];
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
+    .WithOrigins(webOrigins)
+    .AllowCredentials()
+    .AllowAnyHeader()
+    .AllowAnyMethod()));
+
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(connectionString, storagePath);
 
@@ -102,6 +110,7 @@ if (args is ["recruiter", var recruiterLogin])
     return await RecruiterCommand.RunAsync(app.Services, recruiterLogin);
 
 app.UseExceptionHandler();
+app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
