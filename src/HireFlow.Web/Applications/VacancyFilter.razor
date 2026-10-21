@@ -1,0 +1,21 @@
+<select class="form-select w-auto" value="@Value?.ToString()" @onchange="OnChangeAsync">
+    <option value="">Все вакансии</option>
+    @foreach (var v in Options)
+    {
+        <option value="@v.Id">@v.Title</option>
+    }
+</select>
+
+@code {
+    // Вакансии для выбора.
+    [Parameter] public List<VacancyOption> Options { get; set; } = [];
+
+    // Выбранная вакансия; null — все.
+    [Parameter] public Guid? Value { get; set; }
+
+    [Parameter] public EventCallback<Guid?> ValueChanged { get; set; }
+
+    // Передаёт выбранную вакансию родителю.
+    private Task OnChangeAsync(ChangeEventArgs e) =>
+        ValueChanged.InvokeAsync(Guid.TryParse(e.Value?.ToString(), out var id) ? id : null);
+}

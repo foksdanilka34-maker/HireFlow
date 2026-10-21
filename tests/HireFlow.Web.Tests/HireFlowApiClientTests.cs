@@ -163,4 +163,53 @@ public class HireFlowApiClientTests
         Assert.Equal(status, result.Status);
         Assert.Equal(HireFlowApiClient.DefaultError(status), result.Error);
     }
+
+    [Theory]
+    [InlineData(null, "applications")]
+    [InlineData(ApplicationStatus.RecruiterReview, "applications?status=recruiter_review")]
+    [InlineData(ApplicationStatus.AutoRejected, "applications?status=auto_rejected")]
+    public async Task GetApplications_BuildsSnakeCaseStatusQuery(ApplicationStatus? status, string expected)
+    {
+        var handler = FakeHandler.Returns(HttpStatusCode.OK, "[]");
+        var (client, _) = Create(handler);
+
+        var result = await client.GetApplicationsAsync(status);
+
+        Assert.True(result.IsOk);
+        Assert.Equal(HttpMethod.Get, handler.LastMethod);
+        Assert.Equal("http://localhost:5184/" + expected, handler.LastUrl);
+    }
+
+    [Theory]
+    [InlineData(RecruiterDecision.Invite, "invite")]
+    [InlineData(RecruiterDecision.Reject, "reject")]
+    public async Task Decide_PostsSnakeCaseDecisionAndComment(RecruiterDecision decision, string expected)
+    {
+        var id = Guid.NewGuid();
+        var handler = FakeHandler.Returns(HttpStatusCode.Conflict);
+        var (client, _) = Create(handler);
+
+        await client.DecideAsync(id, new DecisionRequestDto(decision, "ok"));
+
+        Assert.Equal(HttpMethod.Post, handler.LastMethod);
+        Assert.Equal($"http://localhost:5184/applications/{id}/decision", handler.LastUrl);
+        using var body = System.Text.Json.JsonDocument.Parse(handler.LastBody!);
+        Assert.Equal(expected, body.RootElement.GetProperty("decision").GetString());
+        Assert.Equal("ok", body.RootElement.GetProperty("comment").GetString());
+    }
+
+    // Адрес для iframe не должен зависеть от того, как записан BaseAddress.
+    [Theory]
+    [InlineData("http://localhost:5184/", false, "http://localhost:5184/applications/{0}/resume")]
+    [InlineData("http://localhost:5184", false, "http://localhost:5184/applications/{0}/resume")]
+    [InlineData("http://localhost:5184/", true, "http://localhost:5184/applications/{0}/resume?inline=true")]
+    [InlineData("http://localhost:5184", true, "http://localhost:5184/applications/{0}/resume?inline=true")]
+    public void ResumeUrl_BuildsAddressFromBaseAddressWithOrWithoutTrailingSlash(string baseAddress, bool inline, string expected)
+    {
+        var id = Guid.NewGuid();
+        var http = new HttpClient(FakeHandler.Returns(HttpStatusCode.OK)) { BaseAddress = new Uri(baseAddress) };
+        var client = new HireFlowApiClient(http, new AuthState());
+
+        Assert.Equal(string.Format(expected, id), client.ResumeUrl(id, inline));
+    }
 }

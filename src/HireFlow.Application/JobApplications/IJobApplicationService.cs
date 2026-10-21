@@ -18,4 +18,7 @@ public interface IJobApplicationService
 
     // Открывает файл резюме отклика; нет отклика или файла — NotFoundException.
     Task<ResumeFile> GetResumeAsync(Guid id, CancellationToken ct);
+
+    // Возвращает сохранённый при отклике текст резюме; нет отклика — NotFoundException.
+    Task<ResumeTextResponse> GetResumeTextAsync(Guid id, CancellationToken ct);
 }

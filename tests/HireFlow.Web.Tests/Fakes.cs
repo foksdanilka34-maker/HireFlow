@@ -19,8 +19,16 @@ public class FakeHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) 
     // Заданное исключение вместо ответа.
     public static FakeHandler Throws(Exception exception) => new(_ => throw exception);
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    // Последний полученный запрос: метод, адрес и тело (null, если тела не было).
+    public HttpMethod? LastMethod { get; private set; }
+    public string? LastUrl { get; private set; }
+    public string? LastBody { get; private set; }
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        return Task.FromResult(respond(request));
+        LastMethod = request.Method;
+        LastUrl = request.RequestUri?.ToString();
+        LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+        return respond(request);
     }
 }

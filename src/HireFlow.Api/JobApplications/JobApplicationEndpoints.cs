@@ -7,6 +7,7 @@ using HireFlow.Application.JobApplications;
 using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 
 namespace HireFlow.Api.JobApplications;
 
@@ -60,10 +61,23 @@ public static class JobApplicationEndpoints
             (Guid id, DecisionRequest request, ClaimsPrincipal user, IJobApplicationService service, CancellationToken ct) =>
                 service.DecideAsync(id, user.GetRecruiterId(), request, ct));
 
-        group.MapGet("/{id:guid}/resume", async (Guid id, IJobApplicationService service, CancellationToken ct) =>
+        group.MapGet("/{id:guid}/resume", async (
+            Guid id, bool? inline, HttpContext http, IJobApplicationService service, CancellationToken ct) =>
         {
             var file = await service.GetResumeAsync(id, ct);
+            http.Response.Headers.XContentTypeOptions = "nosniff";
+            if (inline == true && file.ContentType == "application/pdf")
+            {
+                // inline с именем файла: браузер покажет PDF во встроенном просмотрщике.
+                var disposition = new ContentDispositionHeaderValue("inline");
+                disposition.SetHttpFileName(file.FileName);
+                http.Response.Headers.ContentDisposition = disposition.ToString();
+                return Results.Stream(file.Content, file.ContentType);
+            }
             return Results.File(file.Content, file.ContentType, fileDownloadName: file.FileName);
         });
+
+        group.MapGet("/{id:guid}/resume/text", (Guid id, IJobApplicationService service, CancellationToken ct) =>
+            service.GetResumeTextAsync(id, ct));
     }
 }

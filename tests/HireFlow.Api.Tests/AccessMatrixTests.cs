@@ -15,9 +15,10 @@ public class AccessMatrixTests(ApiAppFixture app) : ApiTestBase(app)
     {
         var data = new TheoryData<string, string, Caller, HttpStatusCode>();
         var resume = $"/applications/{Guid.NewGuid()}/resume";
+        var resumeText = $"{resume}/text";
 
         // Маршруты рекрутера: без входа и только с ключом бота — 401, с сессией работают.
-        foreach (var (method, route) in new[] { ("GET", "/applications"), ("POST", "/vacancies"), ("GET", resume), ("GET", "/auth/me") })
+        foreach (var (method, route) in new[] { ("GET", "/applications"), ("POST", "/vacancies"), ("GET", resume), ("GET", resumeText), ("GET", "/auth/me") })
         {
             data.Add(method, route, Caller.Anonymous, HttpStatusCode.Unauthorized);
             data.Add(method, route, Caller.KeyOnly, HttpStatusCode.Unauthorized);

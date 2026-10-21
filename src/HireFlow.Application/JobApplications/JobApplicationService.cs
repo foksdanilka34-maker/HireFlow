@@ -4,6 +4,7 @@ using HireFlow.Application.Resumes;
 using HireFlow.Domain;
 using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
+using HireFlow.Domain.Notifications;
 using HireFlow.Domain.Screening;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -58,7 +59,7 @@ public class JobApplicationService(
         db.JobApplications.Add(application);
         await db.SaveChangesAsync(ct);
 
-        return ApplicationResponse.From(application, vacancy, candidate, new Dictionary<Guid, string>());
+        return ApplicationResponse.From(application, vacancy, candidate, new Dictionary<Guid, string>(), rejectionSent: false);
     }
 
     // Собирает нового кандидата из запроса и резюме; нет имени или телефона — BadRequestException.
@@ -155,6 +156,18 @@ public class JobApplicationService(
         return new ResumeFile(content, file.ResumeFileName, contentType);
     }
 
+    public async Task<ResumeTextResponse> GetResumeTextAsync(Guid id, CancellationToken ct)
+    {
+        var text = await db.JobApplications
+            .AsNoTracking()
+            .Where(a => a.Id == id)
+            .Select(a => a.ResumeText)
+            .FirstOrDefaultAsync(ct)
+            ?? throw new NotFoundException($"Application {id} not found.");
+
+        return new ResumeTextResponse(text);
+    }
+
     // Догружает вакансию, кандидата и логины рекрутеров из истории (одним запросом) и собирает карточку.
     private async Task<ApplicationResponse> ToResponseAsync(JobApplication application, CancellationToken ct)
     {
@@ -172,6 +185,9 @@ public class JobApplicationService(
                 .Where(r => recruiterIds.Contains(r.Id))
                 .ToDictionaryAsync(r => r.Id, r => r.Login, ct);
 
-        return ApplicationResponse.From(application, vacancy, candidate, logins);
+        var rejectionSent = await db.Notifications.AnyAsync(n => n.ApplicationId == application.Id
+            && n.Type == NotificationType.Rejected && n.Status == NotificationStatus.Sent, ct);
+
+        return ApplicationResponse.From(application, vacancy, candidate, logins, rejectionSent);
     }
 }

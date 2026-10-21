@@ -1,0 +1,186 @@
+@page "/applications/{Id:guid}"
+@inject HireFlowApiClient Api
+@inject IJSRuntime JS
+
+<PageTitle>Отклик — HireFlow</PageTitle>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (application is null)
+{
+    @if (error is null)
+    {
+        <p>Загрузка…</p>
+    }
+}
+else
+{
+    var a = application;
+    <h1 class="h3 mb-3">@a.CandidateName</h1>
+
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <dl class="row mb-3">
+                <dt class="col-sm-4">Телефон</dt>
+                <dd class="col-sm-8"><a href="tel:@a.CandidatePhone">@a.CandidatePhone</a></dd>
+                <dt class="col-sm-4">Вакансия</dt>
+                <dd class="col-sm-8">@a.VacancyTitle</dd>
+                <dt class="col-sm-4">Статус</dt>
+                <dd class="col-sm-8">@ApplicationText.Status(a.Status)</dd>
+                <dt class="col-sm-4">Дата отклика</dt>
+                <dd class="col-sm-8">@a.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</dd>
+                <dt class="col-sm-4">Опыт</dt>
+                <dd class="col-sm-8">@a.YearsOfExperience лет</dd>
+            </dl>
+
+            <h2 class="h5">Скрининг</h2>
+            <dl class="row mb-3">
+                <dt class="col-sm-4">Балл</dt>
+                <dd class="col-sm-8">@a.Screening.Score</dd>
+                <dt class="col-sm-4">Вердикт</dt>
+                <dd class="col-sm-8">@ApplicationText.Verdict(a.Screening.Verdict)</dd>
+                <dt class="col-sm-4">Нет обязательных</dt>
+                <dd class="col-sm-8">@SkillList(a.Screening.MissingRequiredSkills)</dd>
+                <dt class="col-sm-4">Нет желательных</dt>
+                <dd class="col-sm-8">@SkillList(a.Screening.MissingNiceToHaveSkills)</dd>
+                <dt class="col-sm-4">Опыт</dt>
+                <dd class="col-sm-8">@(a.Screening.ExperienceIsEnough ? "Опыта достаточно" : "Опыта недостаточно")</dd>
+            </dl>
+
+            @if (a.Status == ApplicationStatus.AutoRejected && a.RejectionSent)
+            {
+                <div class="alert alert-warning">Кандидату уже отправлен отказ</div>
+            }
+
+            @if (ApplicationText.Decisions(a.Status).Count > 0)
+            {
+                <h2 class="h5">Решение</h2>
+                <textarea class="form-control mb-2" rows="3" maxlength="1000" placeholder="Комментарий (необязательно)"
+                          @bind="comment" disabled="@busy"></textarea>
+                @foreach (var decision in ApplicationText.Decisions(a.Status))
+                {
+                    <button class="btn @(decision == RecruiterDecision.Invite ? "btn-success" : "btn-outline-danger") me-2 mb-3"
+                            disabled="@busy" @onclick="() => DecideAsync(decision)">@ApplicationText.DecisionName(decision)</button>
+                }
+            }
+
+            <h2 class="h5">История</h2>
+            <table class="table table-sm">
+                <tbody>
+                    @foreach (var h in a.History)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@h.ChangedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                            <td>@(h.FromStatus is { } from ? ApplicationText.Status(from) : "—") → @ApplicationText.Status(h.ToStatus)</td>
+                            <td>@(h.RecruiterLogin ?? ApplicationText.ChangedBy(h.ChangedBy))</td>
+                            <td>@h.Reason</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="col-lg-7">
+            <h2 class="h5">Резюме</h2>
+            @if (a.ResumeFormat == ResumeFormat.Pdf)
+            {
+                <p><a href="@Api.ResumeUrl(a.Id, inline: false)" target="_blank">Открыть / скачать</a></p>
+                <iframe src="@Api.ResumeUrl(a.Id, inline: true)" title="Резюме" class="w-100 border" style="height: 80vh"></iframe>
+            }
+            else
+            {
+                <p><a href="@Api.ResumeUrl(a.Id, inline: false)">Скачать docx</a></p>
+                @if (resumeText is not null)
+                {
+                    <pre class="border p-3" style="white-space: pre-wrap">@resumeText</pre>
+                }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private ApplicationDto? application;
+    private string? resumeText;
+    private string? comment;
+    private bool busy;
+    private string? error;
+
+    // Загружает карточку при открытии или смене id.
+    protected override async Task OnParametersSetAsync()
+    {
+        error = null;
+        application = null;
+        resumeText = null;
+        await LoadAsync();
+    }
+
+    // Загружает карточку и, для docx, текст резюме.
+    private async Task LoadAsync()
+    {
+        var result = await Api.GetApplicationAsync(Id);
+        if (!result.IsOk)
+        {
+            error = result.Error;
+            return;
+        }
+        await ShowAsync(result.Value!);
+    }
+
+    // Показывает карточку; для docx догружает текст резюме один раз.
+    private async Task ShowAsync(ApplicationDto value)
+    {
+        application = value;
+        if (value.ResumeFormat != ResumeFormat.Docx || resumeText is not null)
+            return;
+        var text = await Api.GetResumeTextAsync(value.Id);
+        if (text.IsOk)
+            resumeText = text.Value!.Text;
+        else
+            error = text.Error;
+    }
+
+    // Отправляет решение; при 409 показывает ошибку и перезагружает карточку.
+    private async Task DecideAsync(RecruiterDecision decision)
+    {
+        if (application is null || busy)
+            return;
+        if (decision == RecruiterDecision.Invite && ApplicationText.NeedsInviteConfirmation(application)
+            && !await JS.InvokeAsync<bool>("confirm", "Кандидату уже отправлен отказ. Всё равно пригласить?"))
+            return;
+
+        busy = true;
+        error = null;
+        try
+        {
+            var text = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
+            var result = await Api.DecideAsync(application.Id, new DecisionRequestDto(decision, text));
+            if (result.IsOk)
+            {
+                comment = null;
+                await ShowAsync(result.Value!);
+                return;
+            }
+
+            if (result.Status == 409)
+            {
+                await LoadAsync();
+                error ??= "Статус отклика уже изменён, карточка обновлена";
+                return;
+            }
+            error = result.Error;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    // Навыки через запятую или прочерк.
+    private static string SkillList(List<string> skills) => skills.Count == 0 ? "—" : string.Join(", ", skills);
+}

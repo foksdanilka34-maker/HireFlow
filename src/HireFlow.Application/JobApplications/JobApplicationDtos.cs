@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using HireFlow.Application.Resumes;
 using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
 using HireFlow.Domain.Screening;
@@ -59,6 +60,8 @@ public record ApplicationResponse(
     ApplicationStatus Status,
     int YearsOfExperience,
     string ResumeFileName,
+    ResumeFormat ResumeFormat,
+    bool RejectionSent,
     ScreeningResult Screening,
     DateTime CreatedAt,
     DateTime UpdatedAt,
@@ -66,9 +69,10 @@ public record ApplicationResponse(
 {
     // Собирает ответ API из отклика, вакансии, кандидата и логинов рекрутеров из истории.
     public static ApplicationResponse From(
-        JobApplication a, Vacancy vacancy, Candidate candidate, IReadOnlyDictionary<Guid, string> recruiterLogins) => new(
+        JobApplication a, Vacancy vacancy, Candidate candidate, IReadOnlyDictionary<Guid, string> recruiterLogins,
+        bool rejectionSent) => new(
         a.Id, a.VacancyId, vacancy.Title, a.CandidateId, candidate.Name, candidate.Phone,
-        a.Status, a.YearsOfExperience, a.ResumeFileName, a.Screening,
+        a.Status, a.YearsOfExperience, a.ResumeFileName, FormatOf(a.ResumeFileKey), rejectionSent, a.Screening,
         a.CreatedAt, a.UpdatedAt,
         a.History
             .OrderBy(h => h.ChangedAt)
@@ -77,6 +81,12 @@ public record ApplicationResponse(
                 h.FromStatus, h.ToStatus, h.ChangedBy, h.Reason, h.ChangedAt,
                 h.RecruiterId is { } rid ? recruiterLogins.GetValueOrDefault(rid) : null))
             .ToList());
+
+    // Формат резюме по расширению ключа файла (resumes/{guid}.pdf или .docx).
+    public static ResumeFormat FormatOf(string resumeFileKey) =>
+        Path.GetExtension(resumeFileKey).Equals(".pdf", StringComparison.OrdinalIgnoreCase) ? ResumeFormat.Pdf : ResumeFormat.Docx;
 }
 
 public record ResumeFile(Stream Content, string FileName, string ContentType);
+
+public record ResumeTextResponse(string Text);

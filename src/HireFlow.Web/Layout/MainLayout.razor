@@ -10,6 +10,9 @@
     {
         <ul class="navbar-nav me-auto">
             <li class="nav-item"><NavLink class="nav-link" href="vacancies">Вакансии</NavLink></li>
+            <li class="nav-item"><NavLink class="nav-link" href="queue">Очередь</NavLink></li>
+            <li class="nav-item"><NavLink class="nav-link" href="auto-rejected">Автоотказы</NavLink></li>
+            <li class="nav-item"><NavLink class="nav-link" href="applications" Match="NavLinkMatch.All">Все отклики</NavLink></li>
         </ul>
         <span class="navbar-text me-3">@Auth.Recruiter!.Login</span>
         <button class="btn btn-outline-light btn-sm" @onclick="LogoutAsync">Выйти</button>

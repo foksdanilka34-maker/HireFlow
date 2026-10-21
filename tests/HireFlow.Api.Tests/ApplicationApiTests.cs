@@ -217,6 +217,38 @@ public class ApplicationApiTests(ApiAppFixture app) : ApiTestBase(app)
         Assert.True(application.History.Zip(application.History.Skip(1)).All(p => p.First.ChangedAt <= p.Second.ChangedAt));
     }
 
+    // Формат резюме в карточке определяется загруженным файлом и пишется в JSON как pdf / docx.
+    [Theory]
+    [InlineData("resume.pdf", "pdf")]
+    [InlineData("resume.docx", "docx")]
+    public async Task Get_ReturnsResumeFormatOfUploadedFile(string fileName, string expected)
+    {
+        var skill = Unique("s");
+        var vacancy = await CreateVacancyAsync([skill]);
+        var candidate = await CreateCandidateAsync();
+        var bytes = fileName.EndsWith(".docx") ? ResumeFactory.Docx("Резюме", skill) : ResumeWith(skill);
+        var created = await ApplyOkAsync(candidate.TelegramId, vacancy.Id, bytes, fileName: fileName);
+
+        var raw = await (await Client.GetAsync($"/applications/{created.Id}")).Content.ReadAsStringAsync();
+
+        using var json = JsonDocument.Parse(raw);
+        Assert.Equal(expected, json.RootElement.GetProperty("resumeFormat").GetString());
+    }
+
+    // Отказ считается отправленным только после того, как бот подтвердил отправку уведомления.
+    [Fact]
+    public async Task Get_RejectionSentBecomesTrueOnlyAfterBotConfirmsDelivery()
+    {
+        var application = await CreateAutoRejectedApplicationAsync();
+        var notification = Assert.Single(await GetNotificationsAsync(application.Id));
+        Assert.False((await ReadAsync<ApplicationResponse>(await Client.GetAsync($"/applications/{application.Id}"))).RejectionSent);
+
+        await MakeDueAsync(notification.Id);
+        (await Client.PostAsync($"/internal/notifications/{notification.Id}/sent", null)).EnsureSuccessStatusCode();
+
+        Assert.True((await ReadAsync<ApplicationResponse>(await Client.GetAsync($"/applications/{application.Id}"))).RejectionSent);
+    }
+
     [Fact]
     public async Task Get_UnknownIdReturns404()
     {

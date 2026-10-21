@@ -1,0 +1,41 @@
+@if (Items is null)
+{
+    <p>Загрузка…</p>
+}
+else if (Items.Count == 0)
+{
+    <p>Нет откликов</p>
+}
+else
+{
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Кандидат</th>
+                <th>Вакансия</th>
+                <th>Балл</th>
+                <th>Вердикт</th>
+                <th>Статус</th>
+                <th>Дата</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var a in Items)
+            {
+                <tr @key="a.Id">
+                    <td><a href="applications/@a.Id">@a.CandidateName</a></td>
+                    <td>@a.VacancyTitle</td>
+                    <td>@a.Score</td>
+                    <td>@ApplicationText.Verdict(a.Verdict)</td>
+                    <td>@ApplicationText.Status(a.Status)</td>
+                    <td>@a.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    // Отклики для показа; null — ещё загружаются.
+    [Parameter] public List<ApplicationListItemDto>? Items { get; set; }
+}

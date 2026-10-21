@@ -95,6 +95,39 @@ public class HireFlowApiClient(HttpClient http, AuthState auth)
     public Task<ApiResult> DeleteVacancyAsync(Guid id, CancellationToken ct = default) =>
         SendAsync(() => new HttpRequestMessage(HttpMethod.Delete, $"vacancies/{id}"), ct);
 
+    // Возвращает отклики, при заданном статусе — только с этим статусом (новые первыми).
+    public Task<ApiResult<List<ApplicationListItemDto>>> GetApplicationsAsync(
+        ApplicationStatus? status = null, CancellationToken ct = default)
+    {
+        var url = status is null ? "applications" : $"applications?status={JsonNamingPolicy.SnakeCaseLower.ConvertName(status.Value.ToString())}";
+        return SendAsync<List<ApplicationListItemDto>>(() => new HttpRequestMessage(HttpMethod.Get, url), true, ct);
+    }
+
+    // Возвращает карточку отклика по id.
+    public Task<ApiResult<ApplicationDto>> GetApplicationAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<ApplicationDto>(() => new HttpRequestMessage(HttpMethod.Get, $"applications/{id}"), true, ct);
+
+    // Отправляет решение рекрутера и возвращает обновлённую карточку.
+    public Task<ApiResult<ApplicationDto>> DecideAsync(Guid id, DecisionRequestDto request, CancellationToken ct = default) =>
+        SendAsync<ApplicationDto>(() => new HttpRequestMessage(HttpMethod.Post, $"applications/{id}/decision")
+        {
+            Content = JsonContent.Create(request, options: Json),
+        }, true, ct);
+
+    // Возвращает сохранённый текст резюме отклика.
+    public Task<ApiResult<ResumeTextDto>> GetResumeTextAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<ResumeTextDto>(() => new HttpRequestMessage(HttpMethod.Get, $"applications/{id}/resume/text"), true, ct);
+
+    // Абсолютный адрес файла резюме для iframe и ссылки «Скачать»; inline — показать PDF в браузере.
+    public string ResumeUrl(Guid id, bool inline) => BuildResumeUrl(http.BaseAddress!, id, inline);
+
+    // Собирает адрес файла резюме от базового адреса API (с завершающим «/» или без).
+    public static string BuildResumeUrl(Uri baseAddress, Guid id, bool inline)
+    {
+        var root = baseAddress.ToString().TrimEnd('/');
+        return $"{root}/applications/{id}/resume" + (inline ? "?inline=true" : "");
+    }
+
     // Вызывает действие смены статуса вакансии.
     private Task<ApiResult<VacancyDto>> ChangeStatusAsync(Guid id, string action, CancellationToken ct) =>
         SendAsync<VacancyDto>(() => new HttpRequestMessage(HttpMethod.Post, $"vacancies/{id}/{action}"), true, ct);
