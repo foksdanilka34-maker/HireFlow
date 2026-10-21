@@ -1,0 +1,56 @@
+@page "/login"
+@inject HireFlowApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Вход — HireFlow</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-sm-8 col-md-5 col-lg-4">
+        <h1 class="h3 mb-3">Вход для рекрутера</h1>
+
+        @if (error is not null)
+        {
+            <div class="alert alert-danger">@error</div>
+        }
+
+        <form @onsubmit="LoginAsync">
+            <div class="mb-3">
+                <label class="form-label" for="login">Логин</label>
+                <input id="login" class="form-control" autocomplete="username" @bind="login" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="password">Пароль</label>
+                <input id="password" type="password" class="form-control" autocomplete="current-password" @bind="password" />
+            </div>
+            <button type="submit" class="btn btn-primary" disabled="@busy">Войти</button>
+        </form>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    private string login = "";
+    private string password = "";
+    private string? error;
+    private bool busy;
+
+    // Входит и переходит на исходную страницу; пароль сразу стирается из поля.
+    private async Task LoginAsync()
+    {
+        busy = true;
+        error = null;
+        var result = await Api.LoginAsync(login.Trim(), password);
+        password = "";
+        busy = false;
+
+        if (!result.IsOk)
+        {
+            error = result.Error;
+            return;
+        }
+
+        Nav.NavigateTo(Auth.ReturnUrl.Safe(ReturnUrl));
+    }
+}

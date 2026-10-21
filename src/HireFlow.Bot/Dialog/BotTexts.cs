@@ -23,6 +23,8 @@ public static class BotTexts
     public const string NoOpenVacancies = "Открытых вакансий сейчас нет. Загляните позже или пришлите другое резюме.";
     public const string NoMoreVacancies = "Это все вакансии из списка.";
     public const string ClosedLinked = "Набор на эту вакансию закрыт. Пришлите резюме — подберём другие.";
+    public const string UploadLimit =
+        "Сегодня вы уже прислали 3 разных резюме. Попробуйте завтра или пришлите одно из уже отправленных.";
     public const string ClosedVacancy = "Набор на эту вакансию уже закрыт.";
 
     // Приглашение прислать резюме для вакансии по ссылке.

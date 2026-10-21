@@ -21,7 +21,7 @@ public static class CandidateEndpoints
     // Регистрирует HTTP-маршруты /candidates.
     public static void MapCandidateEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/candidates").RequireBotApiKey();
+        var group = app.MapGroup("/candidates").RequireAuthorization(AuthPolicies.Bot);
 
         group.MapGet("/{telegramId:long:min(1)}", (long telegramId, ICandidateService service, CancellationToken ct) =>
             service.GetAsync(telegramId, ct));

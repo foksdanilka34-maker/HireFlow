@@ -100,7 +100,7 @@ public class JobApplicationTests
         var application = ReviewApplication();
         var before = DateTime.UtcNow;
 
-        application.Invite("Приглашаем");
+        application.Invite(RecruiterId, "Приглашаем");
 
         var after = DateTime.UtcNow;
         Assert.Equal(ApplicationStatus.Invited, application.Status);
@@ -117,7 +117,7 @@ public class JobApplicationTests
     {
         var application = ReviewApplication();
 
-        application.Invite(comment);
+        application.Invite(RecruiterId, comment);
 
         var entry = application.History[^1];
         Assert.Equal(ApplicationStatus.RecruiterReview, entry.FromStatus);
@@ -126,13 +126,31 @@ public class JobApplicationTests
         Assert.Equal(comment, entry.Reason);
     }
 
+    // Решение рекрутера пишет его id в последнюю запись истории, а системные записи остаются без рекрутера.
+    [Theory]
+    [InlineData("invite")]
+    [InlineData("reject")]
+    public void Decision_WritesRecruiterIdOnlyIntoRecruiterHistoryEntry(string decision)
+    {
+        var application = ReviewApplication();
+        var recruiterId = Guid.NewGuid();
+
+        if (decision == "invite")
+            application.Invite(recruiterId, null);
+        else
+            application.Reject(recruiterId, null, Delay);
+
+        Assert.Equal(recruiterId, application.History[^1].RecruiterId);
+        Assert.All(application.History.SkipLast(1), h => Assert.Null(h.RecruiterId));
+    }
+
     [Fact]
     public void Invite_FromAutoRejectedCancelsPendingRejectionAndQueuesInvitation()
     {
         var application = AutoRejectedApplication();
         var rejection = Assert.Single(application.Notifications);
 
-        application.Invite("Ошибка системы");
+        application.Invite(RecruiterId, "Ошибка системы");
 
         Assert.Equal(ApplicationStatus.Invited, application.Status);
         Assert.Equal(NotificationStatus.Cancelled, rejection.Status);
@@ -159,7 +177,7 @@ public class JobApplicationTests
             for (var i = 0; i < Notification.MaxAttempts; i++)
                 rejection.MarkFailed("boom");
 
-        application.Invite(null);
+        application.Invite(RecruiterId, null);
 
         Assert.Equal(finished, rejection.Status);
     }
@@ -175,11 +193,11 @@ public class JobApplicationTests
                 return AutoRejectedApplication();
             case "invited":
                 var invited = ReviewApplication();
-                invited.Invite(null);
+                invited.Invite(RecruiterId, null);
                 return invited;
             default:
                 var rejected = ReviewApplication();
-                rejected.Reject(null, Delay);
+                rejected.Reject(RecruiterId, null, Delay);
                 return rejected;
         }
     }
@@ -193,7 +211,7 @@ public class JobApplicationTests
         var application = InState(state);
         var (status, notifications, history) = (application.Status, application.Notifications.Count, application.History.Count);
 
-        Assert.Throws<DomainException>(() => application.Invite(null));
+        Assert.Throws<DomainException>(() => application.Invite(RecruiterId, null));
 
         Assert.Equal(status, application.Status);
         Assert.Equal(notifications, application.Notifications.Count);
@@ -206,7 +224,7 @@ public class JobApplicationTests
         var application = ReviewApplication();
         var before = DateTime.UtcNow;
 
-        application.Reject("Не подходит", Delay);
+        application.Reject(RecruiterId, "Не подходит", Delay);
 
         var after = DateTime.UtcNow;
         Assert.Equal(ApplicationStatus.Rejected, application.Status);
@@ -231,7 +249,7 @@ public class JobApplicationTests
         var application = InState(state);
         var (status, notifications, history) = (application.Status, application.Notifications.Count, application.History.Count);
 
-        Assert.Throws<DomainException>(() => application.Reject(null, Delay));
+        Assert.Throws<DomainException>(() => application.Reject(RecruiterId, null, Delay));
 
         Assert.Equal(status, application.Status);
         Assert.Equal(notifications, application.Notifications.Count);
@@ -244,7 +262,7 @@ public class JobApplicationTests
         var application = ReviewApplication();
         var before = DateTime.UtcNow;
 
-        application.Invite(null);
+        application.Invite(RecruiterId, null);
 
         Assert.InRange(application.UpdatedAt, before, DateTime.UtcNow);
     }

@@ -1,0 +1,33 @@
+@page "/auto-rejected"
+@inject HireFlowApiClient Api
+
+<PageTitle>Автоотказы — HireFlow</PageTitle>
+
+<h1 class="h3 mb-3">Автоотказы</h1>
+
+<div class="mb-3">
+    <VacancyFilter Options="ApplicationLists.Vacancies(all)" @bind-Value="vacancyId" />
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<ApplicationTable Items="@(loaded ? ApplicationLists.Filter(all, vacancyId, false) : null)" />
+
+@code {
+    private List<ApplicationListItemDto> all = [];
+    private bool loaded;
+    private Guid? vacancyId;
+    private string? error;
+
+    // Загружает автоотказы (новые сверху, как отдаёт API).
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await Api.GetApplicationsAsync(ApplicationStatus.AutoRejected);
+        error = result.Error;
+        all = result.Value ?? [];
+        loaded = true;
+    }
+}

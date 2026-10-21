@@ -8,7 +8,7 @@ public static class NotificationEndpoints
     // Регистрирует служебные маршруты /internal/notifications для бота.
     public static void MapNotificationEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/internal/notifications").RequireBotApiKey();
+        var group = app.MapGroup("/internal/notifications").RequireAuthorization(AuthPolicies.Bot);
 
         group.MapGet("/due", (INotificationService service, CancellationToken ct) =>
             service.GetDueAsync(ct));

@@ -1,0 +1,21 @@
+@foreach (var row in Rows)
+{
+    <div class="row g-2 mb-2">
+        <div class="col-sm-4">
+            <input class="form-control" placeholder="Навык" @bind="row.Name" />
+        </div>
+        <div class="col-sm-7">
+            <input class="form-control" placeholder="Синонимы через запятую" @bind="row.Synonyms" />
+        </div>
+        <div class="col-sm-1">
+            <button type="button" class="btn btn-outline-danger" title="Убрать" @onclick="() => Rows.Remove(row)">×</button>
+        </div>
+    </div>
+}
+<button type="button" class="btn btn-sm btn-outline-secondary mb-3" @onclick="() => Rows.Add(new SkillRow())">+ навык</button>
+
+@code {
+    // Строки навыков, которые редактирует форма.
+    [Parameter, EditorRequired]
+    public List<SkillRow> Rows { get; set; } = [];
+}

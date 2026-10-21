@@ -113,17 +113,32 @@ public class DialogEntryTests
         Assert.Null(_bot.Session.Draft.ResumeFileId);
     }
 
+    [Fact]
+    public async Task Document_TooManyUploadsSaysLimitAndKeepsStep()
+    {
+        await _bot.SendAsync("/start");
+        _bot.Api.OnMatches = _ => ApiResult<MatchesDto>.Failure(ApiStatus.TooManyRequests);
+
+        await _bot.SendDocumentAsync();
+
+        Assert.Equal(BotTexts.UploadLimit, _bot.Last);
+        Assert.Equal(BotSteps.AwaitingResume, _bot.Session.Step);
+    }
+
     [Theory]
     [InlineData("api")]
     [InlineData("download")]
+    [InlineData("timeout")]
     public async Task ServiceFailure_AnswersErrorAndKeepsStepWithoutSavingSession(string failure)
     {
         _bot.SeedSession(BotSteps.AwaitingResume);
         var before = _bot.Api.Sessions[DialogHarness.UserId];
         if (failure == "api")
             _bot.Api.OnMatches = _ => ApiResult<MatchesDto>.Failure(ApiStatus.Error);
-        else
+        else if (failure == "download")
             _bot.Chat.DownloadFailure = new HttpRequestException("telegram down");
+        else
+            _bot.Chat.DownloadFailure = new TaskCanceledException();
 
         await _bot.SendDocumentAsync();
 

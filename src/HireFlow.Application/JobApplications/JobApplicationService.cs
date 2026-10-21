@@ -4,6 +4,7 @@ using HireFlow.Application.Resumes;
 using HireFlow.Domain;
 using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
+using HireFlow.Domain.Notifications;
 using HireFlow.Domain.Screening;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -58,7 +59,7 @@ public class JobApplicationService(
         db.JobApplications.Add(application);
         await db.SaveChangesAsync(ct);
 
-        return ApplicationResponse.From(application);
+        return ApplicationResponse.From(application, vacancy, candidate, new Dictionary<Guid, string>(), rejectionSent: false);
     }
 
     // Собирает нового кандидата из запроса и резюме; нет имени или телефона — BadRequestException.
@@ -93,7 +94,7 @@ public class JobApplicationService(
             .FirstOrDefaultAsync(a => a.Id == id, ct)
             ?? throw new NotFoundException($"Application {id} not found.");
 
-        return ApplicationResponse.From(application);
+        return await ToResponseAsync(application, ct);
     }
 
     public async Task<List<ApplicationListItem>> ListAsync(Guid? vacancyId, ApplicationStatus? status, CancellationToken ct)
@@ -117,7 +118,7 @@ public class JobApplicationService(
         return await query.ToListAsync(ct);
     }
 
-    public async Task<ApplicationResponse> DecideAsync(Guid id, DecisionRequest request, CancellationToken ct)
+    public async Task<ApplicationResponse> DecideAsync(Guid id, Guid recruiterId, DecisionRequest request, CancellationToken ct)
     {
         var application = await db.JobApplications
             .Include(a => a.History)
@@ -126,11 +127,67 @@ public class JobApplicationService(
             ?? throw new NotFoundException($"Application {id} not found.");
 
         if (request.Decision == RecruiterDecision.Invite)
-            application.Invite(request.Comment);
+            application.Invite(recruiterId, request.Comment);
         else
-            application.Reject(request.Comment, _rejectionDelay);
+            application.Reject(recruiterId, request.Comment, _rejectionDelay);
 
         await db.SaveChangesAsync(ct);
-        return ApplicationResponse.From(application);
+        return await ToResponseAsync(application, ct);
+    }
+
+    public async Task<ResumeFile> GetResumeAsync(Guid id, CancellationToken ct)
+    {
+        var file = await db.JobApplications
+            .AsNoTracking()
+            .Where(a => a.Id == id)
+            .Select(a => new { a.ResumeFileKey, a.ResumeFileName })
+            .FirstOrDefaultAsync(ct)
+            ?? throw new NotFoundException($"Application {id} not found.");
+
+        var content = await fileStorage.OpenReadAsync(file.ResumeFileKey, ct)
+            ?? throw new NotFoundException($"Resume file of application {id} not found.");
+
+        var contentType = Path.GetExtension(file.ResumeFileKey).ToLowerInvariant() switch
+        {
+            ".pdf" => "application/pdf",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            _ => "application/octet-stream",
+        };
+        return new ResumeFile(content, file.ResumeFileName, contentType);
+    }
+
+    public async Task<ResumeTextResponse> GetResumeTextAsync(Guid id, CancellationToken ct)
+    {
+        var text = await db.JobApplications
+            .AsNoTracking()
+            .Where(a => a.Id == id)
+            .Select(a => a.ResumeText)
+            .FirstOrDefaultAsync(ct)
+            ?? throw new NotFoundException($"Application {id} not found.");
+
+        return new ResumeTextResponse(text);
+    }
+
+    // Догружает вакансию, кандидата и логины рекрутеров из истории (одним запросом) и собирает карточку.
+    private async Task<ApplicationResponse> ToResponseAsync(JobApplication application, CancellationToken ct)
+    {
+        var vacancy = await db.Vacancies.AsNoTracking().FirstAsync(v => v.Id == application.VacancyId, ct);
+        var candidate = await db.Candidates.AsNoTracking().FirstAsync(c => c.Id == application.CandidateId, ct);
+
+        var recruiterIds = application.History
+            .Where(h => h.RecruiterId is not null)
+            .Select(h => h.RecruiterId!.Value)
+            .Distinct()
+            .ToList();
+        var logins = recruiterIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await db.Recruiters.AsNoTracking()
+                .Where(r => recruiterIds.Contains(r.Id))
+                .ToDictionaryAsync(r => r.Id, r => r.Login, ct);
+
+        var rejectionSent = await db.Notifications.AnyAsync(n => n.ApplicationId == application.Id
+            && n.Type == NotificationType.Rejected && n.Status == NotificationStatus.Sent, ct);
+
+        return ApplicationResponse.From(application, vacancy, candidate, logins, rejectionSent);
     }
 }

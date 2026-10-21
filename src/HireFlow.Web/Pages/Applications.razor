@@ -1,0 +1,54 @@
+@page "/applications"
+@inject HireFlowApiClient Api
+
+<PageTitle>Все отклики — HireFlow</PageTitle>
+
+<h1 class="h3 mb-3">Все отклики</h1>
+
+<div class="d-flex align-items-center gap-3 mb-3">
+    <VacancyFilter Options="ApplicationLists.Vacancies(all)" @bind-Value="vacancyId" />
+    <select class="form-select w-auto" @onchange="ChangeStatusAsync">
+        <option value="">Все статусы</option>
+        @foreach (var s in Enum.GetValues<ApplicationStatus>())
+        {
+            <option value="@s" selected="@(status == s)">@ApplicationText.Status(s)</option>
+        }
+    </select>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<ApplicationTable Items="@(loaded ? ApplicationLists.Filter(all, vacancyId, false) : null)" />
+
+@code {
+    private List<ApplicationListItemDto> all = [];
+    private bool loaded;
+    private Guid? vacancyId;
+    private ApplicationStatus? status;
+    private string? error;
+
+    // Загружает все отклики при открытии страницы.
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    // Загружает отклики с выбранным статусом (статус фильтрует API).
+    private async Task LoadAsync()
+    {
+        loaded = false;
+        var result = await Api.GetApplicationsAsync(status);
+        error = result.Error;
+        all = result.Value ?? [];
+        if (vacancyId is { } v && !all.Any(a => a.VacancyId == v))
+            vacancyId = null;
+        loaded = true;
+    }
+
+    // Меняет фильтр по статусу и перезагружает список.
+    private Task ChangeStatusAsync(ChangeEventArgs e)
+    {
+        status = Enum.TryParse<ApplicationStatus>(e.Value?.ToString(), out var s) ? s : null;
+        return LoadAsync();
+    }
+}

@@ -14,5 +14,11 @@ public interface IJobApplicationService
     Task<List<ApplicationListItem>> ListAsync(Guid? vacancyId, ApplicationStatus? status, CancellationToken ct);
 
     // Применяет решение рекрутера: пригласить на созвон или отказать.
-    Task<ApplicationResponse> DecideAsync(Guid id, DecisionRequest request, CancellationToken ct);
+    Task<ApplicationResponse> DecideAsync(Guid id, Guid recruiterId, DecisionRequest request, CancellationToken ct);
+
+    // Открывает файл резюме отклика; нет отклика или файла — NotFoundException.
+    Task<ResumeFile> GetResumeAsync(Guid id, CancellationToken ct);
+
+    // Возвращает сохранённый при отклике текст резюме; нет отклика — NotFoundException.
+    Task<ResumeTextResponse> GetResumeTextAsync(Guid id, CancellationToken ct);
 }

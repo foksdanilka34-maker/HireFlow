@@ -7,6 +7,21 @@
 ### Проверка, что API запущен
 GET {{host}}/health
 
+### Вход рекрутера (рекрутер заводится командой make recruiter LOGIN=anna). Дальше запросы рекрутера идут по cookie
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "login": "anna",
+  "password": "Wertik12345"
+}
+
+### Текущий рекрутер
+GET {{host}}/auth/me
+
+### Выход
+POST {{host}}/auth/logout
+
 ### Создать вакансию
 POST {{host}}/vacancies
 Content-Type: application/json
@@ -156,6 +171,9 @@ Content-Type: application/pdf
 
 ### Отклик по id (с историей статусов)
 GET {{host}}/applications/{{applicationId}}
+
+### Скачать файл резюме отклика
+GET {{host}}/applications/{{applicationId}}/resume
 
 ### Очередь рекрутера: отклики на проверке
 GET {{host}}/applications?status=recruiter_review

@@ -1,0 +1,38 @@
+@page "/queue"
+@inject HireFlowApiClient Api
+
+<PageTitle>Очередь — HireFlow</PageTitle>
+
+<h1 class="h3 mb-3">Очередь на проверку</h1>
+
+<div class="d-flex align-items-center gap-3 mb-3">
+    <VacancyFilter Options="ApplicationLists.Vacancies(all)" @bind-Value="vacancyId" />
+    <div class="form-check mb-0">
+        <input class="form-check-input" type="checkbox" id="borderline" @bind="onlyBorderline" />
+        <label class="form-check-label" for="borderline">Только пограничные</label>
+    </div>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<ApplicationTable Items="@(loaded ? ApplicationLists.Filter(ApplicationLists.Queue(all), vacancyId, onlyBorderline) : null)" />
+
+@code {
+    private List<ApplicationListItemDto> all = [];
+    private bool loaded;
+    private Guid? vacancyId;
+    private bool onlyBorderline;
+    private string? error;
+
+    // Загружает отклики на проверке.
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await Api.GetApplicationsAsync(ApplicationStatus.RecruiterReview);
+        error = result.Error;
+        all = result.Value ?? [];
+        loaded = true;
+    }
+}

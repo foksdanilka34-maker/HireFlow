@@ -3,7 +3,7 @@ using HireFlow.Api.Tests.Infrastructure;
 
 namespace HireFlow.Api.Tests;
 
-// Служебный ключ бота: маршруты бота закрыты X-Api-Key, маршруты рекрутера пока открыты.
+// Служебный ключ бота: маршруты бота закрыты X-Api-Key (доступ рекрутера к маршрутам — в AccessMatrixTests).
 public class BotApiKeyTests(ApiAppFixture app) : ApiTestBase(app)
 {
     private static readonly string[] BotGetRoutes =
@@ -54,15 +54,5 @@ public class BotApiKeyTests(ApiAppFixture app) : ApiTestBase(app)
         var response = await client.PostAsync("/applications", form);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task RecruiterRoute_WithoutKeyIsNotRejectedAs401()
-    {
-        using var client = App.CreateClient(apiKey: null);
-
-        var response = await client.GetAsync("/applications");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 }

@@ -153,6 +153,7 @@ public class HireFlowApiClient(HttpClient http, ILogger<HireFlowApiClient> logge
             HttpStatusCode.BadRequest => ApiStatus.BadRequest,
             HttpStatusCode.NotFound => ApiStatus.NotFound,
             HttpStatusCode.Conflict => ApiStatus.Conflict,
+            HttpStatusCode.TooManyRequests => ApiStatus.TooManyRequests,
             _ => ApiStatus.Error,
         };
 

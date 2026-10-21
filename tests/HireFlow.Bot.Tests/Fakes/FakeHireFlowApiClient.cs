@@ -25,6 +25,9 @@ internal sealed class FakeHireFlowApiClient : IHireFlowApiClient
     public List<CreateApplicationCall> ApplicationCalls { get; } = [];
     public int OpenVacanciesRequests { get; private set; }
     public int PutSessionCalls { get; private set; }
+
+    // Если включено, сохранение сессии завершается ошибкой API.
+    public bool FailPutSession { get; set; }
     public List<Guid> SentIds { get; } = [];
     public List<(Guid Id, string Error)> FailedIds { get; } = [];
 
@@ -69,6 +72,9 @@ internal sealed class FakeHireFlowApiClient : IHireFlowApiClient
     public Task<ApiResult<BotSessionState>> PutSessionAsync(long telegramId, BotSessionState state, CancellationToken ct)
     {
         PutSessionCalls++;
+        if (FailPutSession)
+            return Task.FromResult(ApiResult<BotSessionState>.Failure(ApiStatus.Error));
+
         Sessions[telegramId] = JsonSerializer.Serialize(state);
         return Task.FromResult(ApiResult<BotSessionState>.Ok(state));
     }

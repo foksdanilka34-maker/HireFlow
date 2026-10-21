@@ -1,10 +1,13 @@
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
+using HireFlow.Api.Auth;
 using HireFlow.Api.Common;
 using HireFlow.Api.Security;
 using HireFlow.Application.JobApplications;
 using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 
 namespace HireFlow.Api.JobApplications;
 
@@ -44,7 +47,7 @@ public static class JobApplicationEndpoints
             return Results.Created($"/applications/{application.Id}", application);
         })
         .DisableAntiforgery()
-        .RequireBotApiKey();
+        .RequireAuthorization(AuthPolicies.Bot);
 
         group.MapGet("/", async (Guid? vacancyId, string? status, IJobApplicationService service, CancellationToken ct) =>
             EnumQuery.TryParse<ApplicationStatus>(status, out var parsed)
@@ -54,7 +57,27 @@ public static class JobApplicationEndpoints
         group.MapGet("/{id:guid}", (Guid id, IJobApplicationService service, CancellationToken ct) =>
             service.GetAsync(id, ct));
 
-        group.MapPost("/{id:guid}/decision", (Guid id, DecisionRequest request, IJobApplicationService service, CancellationToken ct) =>
-            service.DecideAsync(id, request, ct));
+        group.MapPost("/{id:guid}/decision",
+            (Guid id, DecisionRequest request, ClaimsPrincipal user, IJobApplicationService service, CancellationToken ct) =>
+                service.DecideAsync(id, user.GetRecruiterId(), request, ct));
+
+        group.MapGet("/{id:guid}/resume", async (
+            Guid id, bool? inline, HttpContext http, IJobApplicationService service, CancellationToken ct) =>
+        {
+            var file = await service.GetResumeAsync(id, ct);
+            http.Response.Headers.XContentTypeOptions = "nosniff";
+            if (inline == true && file.ContentType == "application/pdf")
+            {
+                // inline с именем файла: браузер покажет PDF во встроенном просмотрщике.
+                var disposition = new ContentDispositionHeaderValue("inline");
+                disposition.SetHttpFileName(file.FileName);
+                http.Response.Headers.ContentDisposition = disposition.ToString();
+                return Results.Stream(file.Content, file.ContentType);
+            }
+            return Results.File(file.Content, file.ContentType, fileDownloadName: file.FileName);
+        });
+
+        group.MapGet("/{id:guid}/resume/text", (Guid id, IJobApplicationService service, CancellationToken ct) =>
+            service.GetResumeTextAsync(id, ct));
     }
 }
