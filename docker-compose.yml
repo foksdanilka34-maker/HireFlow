@@ -41,7 +41,7 @@ services:
       Storage__LocalPath: /app/storage
       Hosting__TrustForwardedHeaders: "true"
       Hosting__DataProtectionKeysPath: /app/keys
-      Telemetry__OtlpMetricsEndpoint: http://prometheus:9090/api/v1/otlp/v1/metrics
+      Telemetry__OtlpEndpoint: http://otel-collector:4318
     volumes:
       - resumes:/app/storage
       - dp-keys:/app/keys
@@ -56,6 +56,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
 
   bot:
     profiles: [app]
@@ -66,11 +68,13 @@ services:
     env_file: .env
     environment:
       Bot__ApiBaseUrl: http://api:8080
-      Telemetry__OtlpMetricsEndpoint: http://prometheus:9090/api/v1/otlp/v1/metrics
+      Telemetry__OtlpEndpoint: http://otel-collector:4318
     restart: unless-stopped
     depends_on:
       api:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
 
   web:
     profiles: [app]
@@ -85,7 +89,7 @@ services:
       api:
         condition: service_healthy
 
-  # Метрики API и бота по OTLP; UI только с хоста: http://localhost:9090.
+  # Метрики API и бота через коллектор по OTLP; UI только с хоста: http://localhost:9090.
   prometheus:
     profiles: [app]
     image: prom/prometheus:v3.15.1
@@ -101,8 +105,77 @@ services:
       - "127.0.0.1:9090:9090"
     restart: unless-stopped
 
+  # Коллектор OTLP: трейсы → Tempo, логи → Loki, метрики → Prometheus; наружу не открыт.
+  otel-collector:
+    profiles: [app]
+    image: otel/opentelemetry-collector-contrib:0.163.2
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./deploy/otel-collector.yml:/etc/otelcol/config.yml:ro
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+
+  # Новый volume создаётся с владельцем root, а Tempo работает от пользователя 10001: один раз отдаём ему папку.
+  tempo-init:
+    profiles: [app]
+    image: busybox:1.37.0
+    command: ["chown", "-R", "10001:10001", "/var/tempo"]
+    volumes:
+      - tempo-data:/var/tempo
+    restart: "no"
+
+  tempo:
+    profiles: [app]
+    image: grafana/tempo:2.10.10
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./deploy/tempo.yml:/etc/tempo.yml:ro
+      - tempo-data:/var/tempo
+    restart: unless-stopped
+    depends_on:
+      tempo-init:
+        condition: service_completed_successfully
+
+  loki:
+    profiles: [app]
+    image: grafana/loki:3.7.9
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./deploy/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+
+  # Grafana: http://localhost:3000, вход admin + GRAFANA_ADMIN_PASSWORD из .env.
+  grafana:
+    profiles: [app]
+    image: grafana/grafana:13.2.4
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is not set in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+
 volumes:
   postgres-data:
   resumes:
   dp-keys:
   prometheus-data:
+  tempo-data:
+  loki-data:
+  grafana-data:

@@ -43,6 +43,7 @@ public class NotificationDispatcherService(
     // Одна итерация в собственном scope: клиенты API и Telegram живут только на время итерации.
     public async Task RunOnceAsync(CancellationToken ct)
     {
+        using var activity = BotTelemetry.Source.StartActivity("bot.notifications");
         using var scope = scopes.CreateScope();
         await RunOnceAsync(
             scope.ServiceProvider.GetRequiredService<IHireFlowApiClient>(),

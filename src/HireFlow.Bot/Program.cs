@@ -4,9 +4,12 @@ using HireFlow.Bot.Dialog;
 using HireFlow.Bot.Telegram;
 using global::Telegram.Bot;
 using Microsoft.Extensions.Options;
+using OpenTelemetry;
 using OpenTelemetry.Exporter;
+using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -28,25 +31,29 @@ builder.Services.AddOptions<BotOptions>()
 
 builder.Services.AddSingleton<BotMetrics>();
 
-// Метрики HttpClient, рантайма и свои; экспорт по OTLP только при заданном адресе.
+// Метрики, трейсы и логи; экспорт по OTLP в коллектор только при заданном адресе.
 var telemetry = builder.Configuration.GetSection(TelemetryOptions.SectionName).Get<TelemetryOptions>()
     ?? new TelemetryOptions();
-builder.Services.AddOpenTelemetry()
+builder.Logging.AddOpenTelemetry(o => o.IncludeFormattedMessage = true);
+var otel = builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("hireflow-bot"))
-    .WithMetrics(metrics =>
-    {
-        metrics.AddMeter("System.Net.Http", "System.Runtime", BotMetrics.MeterName);
-        if (!string.IsNullOrWhiteSpace(telemetry.OtlpMetricsEndpoint))
+    .WithMetrics(metrics => metrics.AddMeter("System.Net.Http", "System.Runtime", BotMetrics.MeterName))
+    .WithTracing(tracing => tracing
+        .AddSource(BotTelemetry.SourceName)
+        .AddHttpClientInstrumentation(o =>
         {
-            metrics.AddOtlpExporter((exporter, reader) =>
-            {
-                exporter.Protocol = OtlpExportProtocol.HttpProtobuf;
-                exporter.Endpoint = new Uri(telemetry.OtlpMetricsEndpoint);
-                reader.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds =
-                    (int)telemetry.ExportInterval.TotalMilliseconds;
-            });
-        }
-    });
+            o.FilterHttpRequestMessage = BotTelemetry.ShouldTrace;
+            o.RecordException = false;
+        })
+        .AddProcessor(new UrlTagsRemover()));
+if (!string.IsNullOrWhiteSpace(telemetry.OtlpEndpoint))
+{
+    // Экспортёр подключается после процессора UrlTagsRemover: порядок важен, иначе url.* уйдут в коллектор.
+    otel.UseOtlpExporter(OtlpExportProtocol.HttpProtobuf, new Uri(telemetry.OtlpEndpoint));
+    builder.Services.Configure<MetricReaderOptions>(reader =>
+        reader.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds =
+            (int)telemetry.ExportInterval.TotalMilliseconds);
+}
 
 builder.Services.AddHttpClient<IHireFlowApiClient, HireFlowApiClient>((sp, http) =>
 {

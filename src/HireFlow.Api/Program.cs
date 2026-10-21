@@ -23,9 +23,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
+using Npgsql;
+using OpenTelemetry;
 using OpenTelemetry.Exporter;
+using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 // Консольная команда для healthcheck контейнера: строка подключения и ключ бота не нужны.
 if (args is ["healthcheck"])
@@ -150,27 +154,31 @@ builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tag
 builder.Services.AddSingleton<MetricsSnapshotService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MetricsSnapshotService>());
 
-// Метрики ASP.NET Core, Kestrel, рантайма, Npgsql и свои; экспорт по OTLP только при заданном адресе.
+// Метрики, трейсы и логи; экспорт по OTLP в коллектор только при заданном адресе.
 var telemetry = builder.Configuration.GetSection(TelemetryOptions.SectionName).Get<TelemetryOptions>()
     ?? new TelemetryOptions();
-builder.Services.AddOpenTelemetry()
+builder.Logging.AddOpenTelemetry(o => o.IncludeFormattedMessage = true);
+var otel = builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("hireflow-api"))
-    .WithMetrics(metrics =>
-    {
-        metrics.AddMeter(
-            "Microsoft.AspNetCore.Hosting", "Microsoft.AspNetCore.Server.Kestrel", "System.Runtime", "Npgsql",
-            HireFlowMetrics.MeterName);
-        if (!string.IsNullOrWhiteSpace(telemetry.OtlpMetricsEndpoint))
+    .WithMetrics(metrics => metrics.AddMeter(
+        "Microsoft.AspNetCore.Hosting", "Microsoft.AspNetCore.Server.Kestrel", "System.Runtime", "Npgsql",
+        HireFlowMetrics.MeterName))
+    .WithTracing(tracing => tracing
+        .AddAspNetCoreInstrumentation(o =>
         {
-            metrics.AddOtlpExporter((exporter, reader) =>
-            {
-                exporter.Protocol = OtlpExportProtocol.HttpProtobuf;
-                exporter.Endpoint = new Uri(telemetry.OtlpMetricsEndpoint);
-                reader.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds =
-                    (int)telemetry.ExportInterval.TotalMilliseconds;
-            });
-        }
-    });
+            o.Filter = context => !context.Request.Path.StartsWithSegments("/health");
+            o.RecordException = false;
+        })
+        .AddNpgsql()
+        .AddProcessor(new UrlTagsRemover()));
+if (!string.IsNullOrWhiteSpace(telemetry.OtlpEndpoint))
+{
+    // Экспортёр подключается после процессора UrlTagsRemover: порядок важен, иначе url.* уйдут в коллектор.
+    otel.UseOtlpExporter(OtlpExportProtocol.HttpProtobuf, new Uri(telemetry.OtlpEndpoint));
+    builder.Services.Configure<MetricReaderOptions>(reader =>
+        reader.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds =
+            (int)telemetry.ExportInterval.TotalMilliseconds);
+}
 
 var app = builder.Build();
 

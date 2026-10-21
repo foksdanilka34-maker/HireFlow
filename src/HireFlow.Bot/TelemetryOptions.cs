@@ -1,10 +1,10 @@
 namespace HireFlow.Bot;
 
-// Экспорт метрик по OTLP; пустой адрес — метрики пишутся, но никуда не отправляются.
+// Экспорт метрик, трейсов и логов по OTLP в коллектор; пустой адрес — телеметрия пишется, но никуда не отправляется.
 public class TelemetryOptions
 {
     public const string SectionName = "Telemetry";
 
-    public string? OtlpMetricsEndpoint { get; set; }
+    public string? OtlpEndpoint { get; set; }
     public TimeSpan ExportInterval { get; set; } = TimeSpan.FromSeconds(15);
 }

@@ -28,6 +28,7 @@ help:
 	@echo "make down      остановить стенд и PostgreSQL (база для make run тоже; данные в volume сохраняются)"
 	@echo "make logs      логи стенда"
 	@echo "Метрики: http://localhost:9090"
+	@echo "Grafana: http://localhost:3000 (admin, пароль из .env)"
 	@echo "make docker-recruiter LOGIN=anna  создать рекрутера в стенде"
 	@echo "Не запускайте make up и make run одновременно: два бота с одним токеном мешают друг другу."
 
@@ -37,6 +38,7 @@ help:
 	@echo "Создан .env — впишите в него Bot__TelegramToken от @BotFather и запустите команду снова." && exit 1
 
 db: .env
+	@grep -q '^GRAFANA_ADMIN_PASSWORD=.' .env || (echo "В .env не задан GRAFANA_ADMIN_PASSWORD (нужен любой docker compose, см. .env.example)" && exit 1)
 	docker compose up -d --wait postgres
 
 migrate: db

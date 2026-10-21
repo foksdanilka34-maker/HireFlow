@@ -1,0 +1,10 @@
+# Дашборды из файлов: правки в интерфейсе не сохраняются, источник — deploy/grafana/dashboards.
+apiVersion: 1
+
+providers:
+  - name: hireflow
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards

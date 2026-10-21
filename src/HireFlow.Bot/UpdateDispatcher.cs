@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using HireFlow.Bot.Dialog;
 using Microsoft.Extensions.Logging;
@@ -49,6 +50,8 @@ public class UpdateDispatcher(
     {
         await foreach (var message in reader.ReadAllAsync(CancellationToken.None))
         {
+            using var activity = BotTelemetry.Source.StartActivity("bot.message");
+            activity?.SetTag(BotTelemetry.MessageKindTag, BotTelemetry.MessageKind(message));
             try
             {
                 await handler(message, CancellationToken.None);
@@ -56,6 +59,7 @@ public class UpdateDispatcher(
             }
             catch (Exception ex)
             {
+                activity?.SetStatus(ActivityStatusCode.Error);
                 logger.LogError("Message handling failed: {ErrorType}", ex.GetType().Name);
                 metrics?.MessageHandled(ok: false);
             }
