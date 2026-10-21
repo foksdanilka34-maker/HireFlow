@@ -41,9 +41,18 @@ services:
       Storage__LocalPath: /app/storage
       Hosting__TrustForwardedHeaders: "true"
       Hosting__DataProtectionKeysPath: /app/keys
+      Telemetry__OtlpMetricsEndpoint: http://prometheus:9090/api/v1/otlp/v1/metrics
     volumes:
       - resumes:/app/storage
       - dp-keys:/app/keys
+    restart: unless-stopped
+    # Команда самого API: GET /health/ready (в образе aspnet нет curl).
+    healthcheck:
+      test: ["CMD", "dotnet", "HireFlow.Api.dll", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -57,8 +66,11 @@ services:
     env_file: .env
     environment:
       Bot__ApiBaseUrl: http://api:8080
+      Telemetry__OtlpMetricsEndpoint: http://prometheus:9090/api/v1/otlp/v1/metrics
+    restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   web:
     profiles: [app]
@@ -68,10 +80,29 @@ services:
     image: hireflow-web
     ports:
       - "8080:80"
+    restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+
+  # Метрики API и бота по OTLP; UI только с хоста: http://localhost:9090.
+  prometheus:
+    profiles: [app]
+    image: prom/prometheus:v3.15.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-otlp-receiver
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
 
 volumes:
   postgres-data:
   resumes:
   dp-keys:
+  prometheus-data:

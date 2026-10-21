@@ -1,0 +1,13 @@
+# Метрики API и бота приходят по OTLP (--web.enable-otlp-receiver); scrape — только сам Prometheus.
+global:
+  scrape_interval: 15s
+
+otlp:
+  # service.name из ресурса OTel становится меткой service_name на каждом ряду.
+  promote_resource_attributes:
+    - service.name
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

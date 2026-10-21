@@ -27,6 +27,7 @@ help:
 	@echo "make up        собрать образы и поднять стенд (кабинет: http://localhost:8080)"
 	@echo "make down      остановить стенд и PostgreSQL (база для make run тоже; данные в volume сохраняются)"
 	@echo "make logs      логи стенда"
+	@echo "Метрики: http://localhost:9090"
 	@echo "make docker-recruiter LOGIN=anna  создать рекрутера в стенде"
 	@echo "Не запускайте make up и make run одновременно: два бота с одним токеном мешают друг другу."
 

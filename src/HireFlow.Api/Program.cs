@@ -13,6 +13,7 @@ using HireFlow.Api.Recruiters;
 using HireFlow.Api.Security;
 using HireFlow.Api.Vacancies;
 using HireFlow.Application;
+using HireFlow.Application.Common;
 using HireFlow.Application.Resumes;
 using HireFlow.Application.Notifications;
 using HireFlow.Infrastructure;
@@ -20,7 +21,15 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+
+// Консольная команда для healthcheck контейнера: строка подключения и ключ бота не нужны.
+if (args is ["healthcheck"])
+    return await HealthcheckCommand.RunAsync();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -108,6 +117,11 @@ builder.Services.AddAuthorizationBuilder()
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = (context, _) =>
+    {
+        context.HttpContext.RequestServices.GetRequiredService<HireFlowMetrics>().RecruiterLogin("limited");
+        return ValueTask.CompletedTask;
+    };
     options.AddPolicy(AuthPolicies.LoginRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions
@@ -128,6 +142,35 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(connectionString, storagePath);
+
+// /health/ready проверяет базу; /health/live — только что процесс отвечает.
+builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"], timeout: TimeSpan.FromSeconds(3));
+
+// Снимок из БД для gauges; singleton, чтобы его можно было получить из DI.
+builder.Services.AddSingleton<MetricsSnapshotService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MetricsSnapshotService>());
+
+// Метрики ASP.NET Core, Kestrel, рантайма, Npgsql и свои; экспорт по OTLP только при заданном адресе.
+var telemetry = builder.Configuration.GetSection(TelemetryOptions.SectionName).Get<TelemetryOptions>()
+    ?? new TelemetryOptions();
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("hireflow-api"))
+    .WithMetrics(metrics =>
+    {
+        metrics.AddMeter(
+            "Microsoft.AspNetCore.Hosting", "Microsoft.AspNetCore.Server.Kestrel", "System.Runtime", "Npgsql",
+            HireFlowMetrics.MeterName);
+        if (!string.IsNullOrWhiteSpace(telemetry.OtlpMetricsEndpoint))
+        {
+            metrics.AddOtlpExporter((exporter, reader) =>
+            {
+                exporter.Protocol = OtlpExportProtocol.HttpProtobuf;
+                exporter.Endpoint = new Uri(telemetry.OtlpMetricsEndpoint);
+                reader.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds =
+                    (int)telemetry.ExportInterval.TotalMilliseconds;
+            });
+        }
+    });
 
 var app = builder.Build();
 
@@ -156,6 +199,9 @@ if (app.Environment.IsDevelopment())
 
 app.MapGet("/", () => "HireFlow API работает").AllowAnonymous();
 app.MapGet("/health", () => new { status = "ok", time = DateTime.UtcNow }).AllowAnonymous();
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") })
+    .AllowAnonymous();
 app.MapAuthEndpoints();
 app.MapVacancyEndpoints();
 app.MapCandidateEndpoints();

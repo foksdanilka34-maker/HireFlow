@@ -12,7 +12,8 @@ namespace HireFlow.Application.Matching;
 public class VacancyMatchingService(
     IAppDbContext db,
     IResumeReader resumeReader,
-    IOptions<ResumeUploadOptions> uploadOptions) : IVacancyMatchingService
+    IOptions<ResumeUploadOptions> uploadOptions,
+    HireFlowMetrics metrics) : IVacancyMatchingService
 {
     public async Task<FindMatchesResponse> FindMatchesAsync(FindMatchesRequest request, CancellationToken ct)
     {
@@ -52,7 +53,10 @@ public class VacancyMatchingService(
         var existing = uploads.FirstOrDefault(u => u.FileHash == hash);
         var isNewInWindow = existing is null || existing.UploadedAt <= windowStart;
         if (isNewInWindow && uploads.Count(u => u.UploadedAt > windowStart) >= options.DailyLimit)
+        {
+            metrics.ResumeUploadLimited();
             throw new TooManyRequestsException("Daily resume upload limit reached.");
+        }
 
         db.ResumeUploads.RemoveRange(uploads.Where(u => u.UploadedAt <= windowStart && u != existing));
         if (existing is null)

@@ -4,6 +4,9 @@ using HireFlow.Bot.Dialog;
 using HireFlow.Bot.Telegram;
 using global::Telegram.Bot;
 using Microsoft.Extensions.Options;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -22,6 +25,28 @@ builder.Services.AddOptions<BotOptions>()
     .Validate(o => o.PageSize > 0, "Bot:PageSize must be positive.")
     .Validate(o => o.Workers is >= 1 and <= 64, "Bot:Workers must be between 1 and 64.")
     .ValidateOnStart();
+
+builder.Services.AddSingleton<BotMetrics>();
+
+// Метрики HttpClient, рантайма и свои; экспорт по OTLP только при заданном адресе.
+var telemetry = builder.Configuration.GetSection(TelemetryOptions.SectionName).Get<TelemetryOptions>()
+    ?? new TelemetryOptions();
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("hireflow-bot"))
+    .WithMetrics(metrics =>
+    {
+        metrics.AddMeter("System.Net.Http", "System.Runtime", BotMetrics.MeterName);
+        if (!string.IsNullOrWhiteSpace(telemetry.OtlpMetricsEndpoint))
+        {
+            metrics.AddOtlpExporter((exporter, reader) =>
+            {
+                exporter.Protocol = OtlpExportProtocol.HttpProtobuf;
+                exporter.Endpoint = new Uri(telemetry.OtlpMetricsEndpoint);
+                reader.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds =
+                    (int)telemetry.ExportInterval.TotalMilliseconds;
+            });
+        }
+    });
 
 builder.Services.AddHttpClient<IHireFlowApiClient, HireFlowApiClient>((sp, http) =>
 {
@@ -47,7 +72,8 @@ builder.Services.AddSingleton(sp =>
             using var scope = scopes.CreateScope();
             await scope.ServiceProvider.GetRequiredService<DialogHandler>().HandleAsync(message, ct);
         },
-        sp.GetRequiredService<ILogger<UpdateDispatcher>>());
+        sp.GetRequiredService<ILogger<UpdateDispatcher>>(),
+        sp.GetRequiredService<BotMetrics>());
 });
 builder.Services.AddHostedService<UpdateReceiverService>();
 builder.Services.AddHostedService<NotificationDispatcherService>();

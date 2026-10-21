@@ -1,0 +1,56 @@
+using System.Diagnostics.Metrics;
+using System.Text.Json;
+using HireFlow.Application.JobApplications;
+using HireFlow.Domain.JobApplications;
+using HireFlow.Domain.Screening;
+
+namespace HireFlow.Application.Common;
+
+// Доменные метрики API (meter HireFlow); в тегах только перечисления, без персональных данных и id.
+public class HireFlowMetrics
+{
+    public const string MeterName = "HireFlow";
+
+    private readonly Counter<long> _applicationsCreated;
+    private readonly Histogram<double> _screeningDuration;
+    private readonly Counter<long> _decisions;
+    private readonly Counter<long> _uploadsLimited;
+    private readonly Counter<long> _logins;
+
+    // Создаёт meter через фабрику DI и регистрирует инструменты.
+    public HireFlowMetrics(IMeterFactory meterFactory)
+    {
+        Meter = meterFactory.Create(MeterName);
+        _applicationsCreated = Meter.CreateCounter<long>("hireflow.applications.created", description: "Созданные отклики");
+        _screeningDuration = Meter.CreateHistogram<double>("hireflow.screening.duration", "s", "Чтение резюме и скоринг");
+        _decisions = Meter.CreateCounter<long>("hireflow.applications.decisions", description: "Решения рекрутера");
+        _uploadsLimited = Meter.CreateCounter<long>("hireflow.resume_uploads.limited", description: "Отказы по лимиту загрузок");
+        _logins = Meter.CreateCounter<long>("hireflow.recruiter.logins", description: "Попытки входа рекрутера");
+    }
+
+    public Meter Meter { get; }
+
+    // Учитывает созданный отклик с вердиктом скрининга.
+    public void ApplicationCreated(ScreeningVerdict verdict) =>
+        _applicationsCreated.Add(1, new KeyValuePair<string, object?>("verdict", ToTag(verdict)));
+
+    // Записывает длительность чтения резюме и скоринга в секундах.
+    public void ScreeningDuration(TimeSpan duration) => _screeningDuration.Record(duration.TotalSeconds);
+
+    // Учитывает решение рекрутера и статус, из которого оно принято.
+    public void Decision(RecruiterDecision decision, ApplicationStatus fromStatus) =>
+        _decisions.Add(1,
+            new KeyValuePair<string, object?>("decision", ToTag(decision)),
+            new KeyValuePair<string, object?>("from_status", ToTag(fromStatus)));
+
+    // Учитывает отказ в загрузке резюме по дневному лимиту.
+    public void ResumeUploadLimited() => _uploadsLimited.Add(1);
+
+    // Учитывает попытку входа рекрутера: success, failure или limited.
+    public void RecruiterLogin(string result) =>
+        _logins.Add(1, new KeyValuePair<string, object?>("result", result));
+
+    // Переводит значение перечисления в snake_case, как в API и БД.
+    public static string ToTag<T>(T value) where T : struct, Enum =>
+        JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
+}

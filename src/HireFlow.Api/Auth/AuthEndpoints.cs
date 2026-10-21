@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using HireFlow.Api.Security;
+using HireFlow.Application.Common;
 using HireFlow.Application.Recruiters;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -13,9 +14,10 @@ public static class AuthEndpoints
     {
         var group = app.MapGroup("/auth");
 
-        group.MapPost("/login", async (LoginRequest request, IRecruiterService service, HttpContext http, CancellationToken ct) =>
+        group.MapPost("/login", async (LoginRequest request, IRecruiterService service, HireFlowMetrics metrics, HttpContext http, CancellationToken ct) =>
         {
             var recruiter = await service.LoginAsync(request, ct);
+            metrics.RecruiterLogin(recruiter is null ? "failure" : "success");
             if (recruiter is null)
                 return Results.Problem("Invalid login or password.", statusCode: StatusCodes.Status401Unauthorized);
 
