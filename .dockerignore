@@ -1,0 +1,11 @@
+**/bin
+**/obj
+.git
+.claude
+.idea
+.vscode
+storage
+tests
+.env
+*.md
+PLAN.md

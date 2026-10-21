@@ -1,0 +1,26 @@
+# Локальный стенд: кабинет рекрутера и API под одним адресом, без TLS.
+:80 {
+	# Запросы кабинета к API: префикс /api срезается, API в сеть хоста не публикуется.
+	handle_path /api/* {
+		reverse_proxy api:8080
+	}
+
+	root * /srv
+	# Браузер перепроверяет файлы по ETag, чтобы после пересборки не взять старый index.html.
+	header Cache-Control "no-cache"
+
+	# Файлы Blazor без SPA fallback: нет файла — 404, а не index.html.
+	handle /_framework/* {
+		file_server {
+			precompressed br gzip
+		}
+	}
+
+	# Неизвестные пути отдают index.html, чтобы маршруты вроде /queue открывались по ссылке.
+	handle {
+		try_files {path} /index.html
+		file_server {
+			precompressed br gzip
+		}
+	}
+}

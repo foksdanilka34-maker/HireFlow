@@ -4,7 +4,9 @@ using System.Text.Json.Serialization;
 using HireFlow.Api.Auth;
 using HireFlow.Api.BotSessions;
 using HireFlow.Api.Candidates;
+using HireFlow.Api.Database;
 using HireFlow.Api.Errors;
+using HireFlow.Api.Hosting;
 using HireFlow.Api.JobApplications;
 using HireFlow.Api.Notifications;
 using HireFlow.Api.Recruiters;
@@ -17,6 +19,8 @@ using HireFlow.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,6 +31,28 @@ var storagePath = builder.Configuration["Storage:LocalPath"]
 var botApiKey = builder.Configuration[$"{BotApiKeyOptions.SectionName}:{nameof(BotApiKeyOptions.ApiKey)}"];
 if (string.IsNullOrWhiteSpace(botApiKey))
     throw new InvalidOperationException("Bot API key 'BotApi:ApiKey' is not set (use user secrets or env BotApi__ApiKey).");
+
+var hosting = builder.Configuration.GetSection(HostingOptions.SectionName).Get<HostingOptions>()
+    ?? new HostingOptions();
+
+// За reverse proxy берём IP клиента и схему из X-Forwarded-*; доверяем любому прокси в закрытой сети.
+if (hosting.TrustForwardedHeaders)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
+
+// Ключи cookie-сессий в общей папке переживают перезапуск контейнера.
+if (!string.IsNullOrWhiteSpace(hosting.DataProtectionKeysPath))
+{
+    builder.Services.AddDataProtection()
+        .SetApplicationName("HireFlow")
+        .PersistKeysToFileSystem(new DirectoryInfo(hosting.DataProtectionKeysPath));
+}
 
 builder.Services.AddOpenApi();
 builder.Services.AddValidation();
@@ -108,6 +134,14 @@ var app = builder.Build();
 // Консольная команда: создать рекрутера или сменить ему пароль, веб-сервер не запускается.
 if (args is ["recruiter", var recruiterLogin])
     return await RecruiterCommand.RunAsync(app.Services, recruiterLogin);
+
+// Консольная команда: применить миграции, веб-сервер не запускается.
+if (args is ["migrate"])
+    return await MigrateCommand.RunAsync(app.Services);
+
+if (hosting.TrustForwardedHeaders)
+    app.UseForwardedHeaders();
+
 
 app.UseExceptionHandler();
 app.UseCors();

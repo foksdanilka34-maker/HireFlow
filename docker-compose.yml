@@ -15,5 +15,63 @@ services:
       timeout: 3s
       retries: 10
 
+  # Стенд целиком (make up): одноразовые миграции, API, бот и кабинет за Caddy на http://localhost:8080.
+  migrate:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: src/HireFlow.Api/Dockerfile
+    image: hireflow-api
+    command: ["migrate"]
+    restart: "no"
+    env_file: .env
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Database=hireflow;Username=hireflow;Password=${POSTGRES_PASSWORD}
+      Storage__LocalPath: /app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    profiles: [app]
+    image: hireflow-api
+    env_file: .env
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Database=hireflow;Username=hireflow;Password=${POSTGRES_PASSWORD}
+      Storage__LocalPath: /app/storage
+      Hosting__TrustForwardedHeaders: "true"
+      Hosting__DataProtectionKeysPath: /app/keys
+    volumes:
+      - resumes:/app/storage
+      - dp-keys:/app/keys
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  bot:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: src/HireFlow.Bot/Dockerfile
+    image: hireflow-bot
+    env_file: .env
+    environment:
+      Bot__ApiBaseUrl: http://api:8080
+    depends_on:
+      - api
+
+  web:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: src/HireFlow.Web/Dockerfile
+    image: hireflow-web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
 volumes:
   postgres-data:
+  resumes:
+  dp-keys:

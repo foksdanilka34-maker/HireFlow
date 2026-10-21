@@ -1,12 +1,13 @@
 # Локальный запуск HireFlow. Настройки берутся из .env (см. .env.example).
 #   make run      — база, миграции, затем API, бот и кабинет рекрутера вместе (Ctrl+C останавливает всё)
 #   make test     — все тесты (нужен запущенный Docker)
+#   make up       — весь стенд в Docker, кабинет на http://localhost:8080
 #   make help     — список команд
 
 # Загружает .env в окружение команды: dotnet run сам .env не читает.
 ENV := set -a; . ./.env; set +a;
 
-.PHONY: help run db migrate api bot web test stop reset-db recruiter
+.PHONY: help run db migrate api bot web test stop reset-db recruiter up down logs docker-recruiter
 
 help:
 	@echo "make run       база + миграции + API, бот и кабинет"
@@ -19,6 +20,13 @@ help:
 	@echo "make recruiter LOGIN=anna  создать рекрутера или сменить ему пароль"
 	@echo "make stop      остановить PostgreSQL"
 	@echo "make reset-db  удалить базу и создать заново (данные пропадут)"
+	@echo ""
+	@echo "Стенд в Docker:"
+	@echo "make up        собрать образы и поднять стенд (кабинет: http://localhost:8080)"
+	@echo "make down      остановить стенд и PostgreSQL (база для make run тоже; данные в volume сохраняются)"
+	@echo "make logs      логи стенда"
+	@echo "make docker-recruiter LOGIN=anna  создать рекрутера в стенде"
+	@echo "Не запускайте make up и make run одновременно: два бота с одним токеном мешают друг другу."
 
 # Создаёт .env из примера при первом запуске и просит вписать токен бота.
 .env:
@@ -59,3 +67,19 @@ stop:
 reset-db: .env
 	docker compose down -v
 	$(MAKE) migrate
+
+# Весь стенд в Docker: миграции, API, бот и кабинет за Caddy.
+up: .env
+	@grep -q "replace-with-token" .env && echo "В .env не задан Bot__TelegramToken" && exit 1 || true
+	docker compose --profile app up -d --build
+	@echo "Кабинет: http://localhost:8080"
+
+down:
+	docker compose --profile app down
+
+logs:
+	docker compose --profile app logs -f
+
+docker-recruiter: .env
+	@test -n "$(LOGIN)" || (echo "Укажите логин: make docker-recruiter LOGIN=anna" && exit 1)
+	docker compose --profile app run --rm -it api recruiter $(LOGIN)

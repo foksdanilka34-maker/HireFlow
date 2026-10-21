@@ -4,7 +4,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 namespace HireFlow.Api.Tests.Infrastructure;
 
 // Фабрика приложения: строка подключения и папка хранилища задаются так, чтобы Program увидел их до Build().
-public class ApiFactory(string connectionString, string storagePath, int loginAttemptsPerMinute = ApiFactory.DefaultLoginAttempts)
+public class ApiFactory(string connectionString, string storagePath, int loginAttemptsPerMinute = ApiFactory.DefaultLoginAttempts,
+    IReadOnlyDictionary<string, string>? extraSettings = null)
     : WebApplicationFactory<Program>
 {
     // Служебный ключ бота для тестов: без него API не стартует.
@@ -30,5 +31,9 @@ public class ApiFactory(string connectionString, string storagePath, int loginAt
         builder.UseSetting("Notifications:RejectionDelay", RejectionDelay.ToString());
         builder.UseSetting("Web:Origins:0", WebOrigin);
         builder.UseSetting("RecruiterAuth:LoginAttemptsPerMinute", loginAttemptsPerMinute.ToString());
+
+        // Дополнительные настройки конкретной фикстуры (например, Hosting:*).
+        foreach (var (key, value) in extraSettings ?? new Dictionary<string, string>())
+            builder.UseSetting(key, value);
     }
 }
