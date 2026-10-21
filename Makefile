@@ -1,13 +1,14 @@
 # Локальный запуск HireFlow. Настройки берутся из .env (см. .env.example).
 #   make run      — база, миграции, затем API, бот и кабинет рекрутера вместе (Ctrl+C останавливает всё)
 #   make test     — все тесты (нужен запущенный Docker)
+#   make check    — те же проверки, что в CI
 #   make up       — весь стенд в Docker, кабинет на http://localhost:8080
 #   make help     — список команд
 
 # Загружает .env в окружение команды: dotnet run сам .env не читает.
 ENV := set -a; . ./.env; set +a;
 
-.PHONY: help run db migrate api bot web test stop reset-db recruiter up down logs docker-recruiter
+.PHONY: help run db migrate api bot web test check stop reset-db recruiter up down logs docker-recruiter
 
 help:
 	@echo "make run       база + миграции + API, бот и кабинет"
@@ -17,6 +18,7 @@ help:
 	@echo "make bot       только бот"
 	@echo "make web       только кабинет рекрутера (http://localhost:5200)"
 	@echo "make test      все тесты"
+	@echo "make check     проверки как в CI: сборка без предупреждений, уязвимые пакеты, миграции, тесты"
 	@echo "make recruiter LOGIN=anna  создать рекрутера или сменить ему пароль"
 	@echo "make stop      остановить PostgreSQL"
 	@echo "make reset-db  удалить базу и создать заново (данные пропадут)"
@@ -56,6 +58,19 @@ run: migrate
 
 test:
 	dotnet test
+
+# Те же шаги, что job build-test в .github/workflows/ci.yml. dotnet list package всегда возвращает 0,
+# поэтому уязвимости ищем по тексту английского вывода.
+check:
+	dotnet restore HireFlow.slnx
+	dotnet build HireFlow.slnx -c Release --no-restore --no-incremental -warnaserror
+	@out=$$(DOTNET_CLI_UI_LANGUAGE=en dotnet list HireFlow.slnx package --vulnerable --include-transitive) || exit 1; \
+	echo "$$out"; \
+	if echo "$$out" | grep -q "has the following vulnerable packages"; then echo "Найдены уязвимые пакеты"; exit 1; fi
+	dotnet tool restore
+	ConnectionStrings__Postgres="Host=localhost;Database=hireflow;Username=hireflow;Password=x" BotApi__ApiKey=x \
+		dotnet ef migrations has-pending-model-changes --project src/HireFlow.Infrastructure --startup-project src/HireFlow.Api --no-build --configuration Release
+	dotnet test HireFlow.slnx -c Release --no-build
 
 recruiter: migrate
 	@test -n "$(LOGIN)" || (echo "Укажите логин: make recruiter LOGIN=anna" && exit 1)
