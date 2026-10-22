@@ -22,6 +22,10 @@ public class BotMetrics
         _pollingErrors = Meter.CreateCounter<long>("hireflow.bot.polling.errors", description: "Сбои GetUpdates");
         _apiErrors = Meter.CreateCounter<long>("hireflow.bot.api.errors", description: "Сбои вызовов API");
         _notifications = Meter.CreateCounter<long>("hireflow.bot.notifications", description: "Отправка уведомлений");
+
+        // Ряды с 0 сразу после старта: иначе первая точка приходит уже с k ≥ 1 и increase не видит первую пачку.
+        _messagesDropped.Add(0);
+        _pollingErrors.Add(0);
     }
 
     public Meter Meter { get; }

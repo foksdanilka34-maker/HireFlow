@@ -1,0 +1,26 @@
+# SLO доступности API (99,5% ответов без 5xx за 30 дней): доля ошибок за окна burn rate.
+# /health* исключены: healthcheck Docker на старте даёт 503, это не ошибки для пользователей.
+# «or vector(0)»: пока 5xx не было, рядов с 5xx нет, а доля ошибок должна быть 0, а не пустой.
+groups:
+  - name: slo-api
+    rules:
+      - record: slo:api_request_errors:ratio_rate5m
+        expr: |
+          (sum(rate(http_server_request_duration_seconds_count{service_name="hireflow-api", http_route!~"/health.*", http_response_status_code=~"5.."}[5m])) or vector(0))
+          /
+          sum(rate(http_server_request_duration_seconds_count{service_name="hireflow-api", http_route!~"/health.*"}[5m]))
+      - record: slo:api_request_errors:ratio_rate30m
+        expr: |
+          (sum(rate(http_server_request_duration_seconds_count{service_name="hireflow-api", http_route!~"/health.*", http_response_status_code=~"5.."}[30m])) or vector(0))
+          /
+          sum(rate(http_server_request_duration_seconds_count{service_name="hireflow-api", http_route!~"/health.*"}[30m]))
+      - record: slo:api_request_errors:ratio_rate1h
+        expr: |
+          (sum(rate(http_server_request_duration_seconds_count{service_name="hireflow-api", http_route!~"/health.*", http_response_status_code=~"5.."}[1h])) or vector(0))
+          /
+          sum(rate(http_server_request_duration_seconds_count{service_name="hireflow-api", http_route!~"/health.*"}[1h]))
+      - record: slo:api_request_errors:ratio_rate6h
+        expr: |
+          (sum(rate(http_server_request_duration_seconds_count{service_name="hireflow-api", http_route!~"/health.*", http_response_status_code=~"5.."}[6h])) or vector(0))
+          /
+          sum(rate(http_server_request_duration_seconds_count{service_name="hireflow-api", http_route!~"/health.*"}[6h]))

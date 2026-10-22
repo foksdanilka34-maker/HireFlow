@@ -14,6 +14,245 @@
   ],
   "panels": [
     {
+      "id": 12,
+      "type": "row",
+      "title": "SLO",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Доступность API за 30 дней, цель 99,5% (данные — 7 дней)",
+      "description": "Доля ответов без 5xx, без /health*. Prometheus хранит 7 дней, поэтому фактически окно — срок хранения.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.995
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "1 - ((sum(increase(http_server_request_duration_seconds_count{service_name=\"hireflow-api\", http_route!~\"/health.*\", http_response_status_code=~\"5..\"}[30d])) or vector(0)) / sum(increase(http_server_request_duration_seconds_count{service_name=\"hireflow-api\", http_route!~\"/health.*\"}[30d])))",
+          "legendFormat": "доступность",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Остаток бюджета ошибок за 30 дней (данные — 7 дней)",
+      "description": "Бюджет — 0,5% запросов с 5xx. Меньше 0 — SLO нарушено.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 0.25
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "1 - ((sum(increase(http_server_request_duration_seconds_count{service_name=\"hireflow-api\", http_route!~\"/health.*\", http_response_status_code=~\"5..\"}[30d])) or vector(0)) / sum(increase(http_server_request_duration_seconds_count{service_name=\"hireflow-api\", http_route!~\"/health.*\"}[30d]))) / 0.005",
+          "legendFormat": "остаток",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Burn rate API: 1 ч и 6 ч (алерты: 14.4 и 6)",
+      "description": "Во сколько раз быстрее допустимого тратится бюджет ошибок. 1 — бюджет кончится ровно за 30 дней.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "slo:api_request_errors:ratio_rate1h / 0.005",
+          "legendFormat": "1 ч"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "slo:api_request_errors:ratio_rate6h / 0.005",
+          "legendFormat": "6 ч"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Доля запросов к API быстрее 1 с (цель 95%)",
+      "description": "Окно 15 минут, без /health*.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(http_server_request_duration_seconds_bucket{service_name=\"hireflow-api\", http_route!~\"/health.*\", le=\"1\"}[15m])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"hireflow-api\", http_route!~\"/health.*\"}[15m]))",
+          "legendFormat": "быстрее 1 с"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Доля скринингов быстрее 60 с (цель 99%)",
+      "description": "Окно 1 час: чтение резюме и скоринг.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(hireflow_screening_duration_seconds_bucket{le=\"60\"}[1h])) / sum(rate(hireflow_screening_duration_seconds_count[1h]))",
+          "legendFormat": "быстрее 60 с"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "row",
+      "title": "Сервис",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
       "id": 1,
       "type": "timeseries",
       "title": "Отклики по вердикту, в минуту",
@@ -23,7 +262,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 0,
+        "y": 18,
         "w": 12,
         "h": 8
       },
@@ -56,7 +295,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 0,
+        "y": 18,
         "w": 12,
         "h": 8
       },
@@ -89,7 +328,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 8,
+        "y": 26,
         "w": 12,
         "h": 8
       },
@@ -122,7 +361,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 8,
+        "y": 26,
         "w": 12,
         "h": 8
       },
@@ -155,7 +394,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 34,
         "w": 12,
         "h": 8
       },
@@ -197,7 +436,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 16,
+        "y": 34,
         "w": 12,
         "h": 8
       },
@@ -239,7 +478,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 42,
         "w": 12,
         "h": 8
       },
@@ -281,7 +520,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 24,
+        "y": 42,
         "w": 12,
         "h": 8
       },
@@ -314,7 +553,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 50,
         "w": 12,
         "h": 8
       },
@@ -347,7 +586,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 32,
+        "y": 50,
         "w": 12,
         "h": 8
       },
@@ -380,7 +619,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 40,
+        "y": 58,
         "w": 12,
         "h": 8
       },

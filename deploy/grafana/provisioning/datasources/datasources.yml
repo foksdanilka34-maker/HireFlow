@@ -1,4 +1,4 @@
-# Источники данных Grafana: метрики, логи и трейсы с переходами лог ↔ трейс по trace_id.
+# Источники данных Grafana: метрики, логи и трейсы с переходами лог ↔ трейс по trace_id, алерты из Alertmanager.
 apiVersion: 1
 
 datasources:
@@ -35,3 +35,13 @@ datasources:
         spanEndTimeShift: '5m'
         customQuery: true
         query: '{service_name="$${__span.tags["service.name"]}"} | trace_id="$${__trace.traceId}"'
+
+  # Активные алерты и silences в Grafana (Alerting → Alert groups / Silences); правила — из источника Prometheus.
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    jsonData:
+      implementation: prometheus
+      handleGrafanaManagedAlerts: false

@@ -11,6 +11,9 @@ public class HireFlowMetrics
 {
     public const string MeterName = "HireFlow";
 
+    // Границы корзин скрининга в секундах: 60 — порог SLO (99% откликов быстрее минуты).
+    private static readonly double[] ScreeningDurationBuckets = [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120];
+
     private readonly Counter<long> _applicationsCreated;
     private readonly Histogram<double> _screeningDuration;
     private readonly Counter<long> _decisions;
@@ -22,7 +25,8 @@ public class HireFlowMetrics
     {
         Meter = meterFactory.Create(MeterName);
         _applicationsCreated = Meter.CreateCounter<long>("hireflow.applications.created", description: "Созданные отклики");
-        _screeningDuration = Meter.CreateHistogram<double>("hireflow.screening.duration", "s", "Чтение резюме и скоринг");
+        _screeningDuration = Meter.CreateHistogram("hireflow.screening.duration", "s", "Чтение резюме и скоринг",
+            tags: null, advice: new InstrumentAdvice<double> { HistogramBucketBoundaries = ScreeningDurationBuckets });
         _decisions = Meter.CreateCounter<long>("hireflow.applications.decisions", description: "Решения рекрутера");
         _uploadsLimited = Meter.CreateCounter<long>("hireflow.resume_uploads.limited", description: "Отказы по лимиту загрузок");
         _logins = Meter.CreateCounter<long>("hireflow.recruiter.logins", description: "Попытки входа рекрутера");

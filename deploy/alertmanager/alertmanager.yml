@@ -1,0 +1,21 @@
+# Alertmanager без рассылки: алерты видны в UI (http://localhost:9093) и в Grafana.
+# Тот же маршрут и подавления, что в alertmanager-telegram.yml — меняйте оба файла вместе.
+route:
+  receiver: none
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: ['severity="critical"']
+      repeat_interval: 1h
+
+# Без коллектора данных нет, а без API нет и его SLO-метрик: показываем причину, а не следствия.
+inhibit_rules:
+  - source_matchers: ['alertname="TelemetryCollectorDown"']
+    target_matchers: ['alertname=~"ApiDown|BotDown|ApiErrorBudgetFastBurn|ApiErrorBudgetSlowBurn|ApiLatencyHigh|ScreeningSlow"']
+  - source_matchers: ['alertname="ApiDown"']
+    target_matchers: ['alertname=~"ApiErrorBudgetFastBurn|ApiErrorBudgetSlowBurn|ApiLatencyHigh|ScreeningSlow"']
+
+receivers:
+  - name: none

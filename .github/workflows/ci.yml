@@ -59,6 +59,9 @@ jobs:
           dotnet tool restore
           dotnet ef migrations has-pending-model-changes --project src/HireFlow.Infrastructure --startup-project src/HireFlow.Api --no-build --configuration Release
 
+      - name: Prometheus and Alertmanager rules
+        run: make rules-check
+
       - name: Test
         run: dotnet test HireFlow.slnx -c Release --no-build --logger trx --results-directory TestResults
 

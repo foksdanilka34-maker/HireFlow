@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace HireFlow.Api.Hosting;
 
 // Раз в 30 с считает снимок из БД для observable gauges; колбэки экспорта читают только поля снимка.
+// До первого успешного обновления снимка нет и gauges ничего не отдают: нули нового процесса дали бы ложный рост.
 public class MetricsSnapshotService : BackgroundService
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(30);
@@ -14,7 +15,7 @@ public class MetricsSnapshotService : BackgroundService
 
     private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<MetricsSnapshotService> _logger;
-    private volatile Snapshot _snapshot = new(new Dictionary<ApplicationStatus, int>(), 0, 0);
+    private volatile Snapshot? _snapshot;
 
     // Регистрирует gauges на meter HireFlow.
     public MetricsSnapshotService(IServiceScopeFactory scopes, HireFlowMetrics metrics, ILogger<MetricsSnapshotService> logger)
@@ -22,9 +23,9 @@ public class MetricsSnapshotService : BackgroundService
         _scopes = scopes;
         _logger = logger;
         metrics.Meter.CreateObservableGauge("hireflow.applications.by_status", ObserveByStatus, description: "Отклики по статусам");
-        metrics.Meter.CreateObservableGauge("hireflow.notifications.overdue", () => _snapshot.Overdue,
+        metrics.Meter.CreateObservableGauge("hireflow.notifications.overdue", () => Observe(s => s.Overdue),
             description: "Уведомления pending, просроченные больше чем на 5 минут");
-        metrics.Meter.CreateObservableGauge("hireflow.notifications.failed", () => _snapshot.Failed,
+        metrics.Meter.CreateObservableGauge("hireflow.notifications.failed", () => Observe(s => s.Failed),
             description: "Уведомления в статусе failed");
     }
 
@@ -70,10 +71,14 @@ public class MetricsSnapshotService : BackgroundService
         _snapshot = new Snapshot(byStatus, overdue, failed);
     }
 
-    // Отдаёт число откликов по каждому статусу из снимка.
+    // Отдаёт число откликов по каждому статусу из снимка; снимка ещё нет — ничего.
     private IEnumerable<Measurement<int>> ObserveByStatus() =>
-        _snapshot.ByStatus.Select(p =>
-            new Measurement<int>(p.Value, new KeyValuePair<string, object?>("status", HireFlowMetrics.ToTag(p.Key))));
+        _snapshot?.ByStatus.Select(p =>
+            new Measurement<int>(p.Value, new KeyValuePair<string, object?>("status", HireFlowMetrics.ToTag(p.Key)))) ?? [];
+
+    // Отдаёт одно значение из снимка; снимка ещё нет — ничего.
+    private IEnumerable<Measurement<int>> Observe(Func<Snapshot, int> value) =>
+        _snapshot is { } snapshot ? [new Measurement<int>(value(snapshot))] : [];
 
     // Ждёт следующий тик; false — остановка.
     private static async Task<bool> WaitNextAsync(PeriodicTimer timer, CancellationToken ct)

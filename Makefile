@@ -8,7 +8,13 @@
 # Загружает .env в окружение команды: dotnet run сам .env не читает.
 ENV := set -a; . ./.env; set +a;
 
-.PHONY: help run db migrate api bot web test check stop reset-db recruiter up down logs docker-recruiter
+# Те же версии, что в docker-compose.yml: promtool и amtool берутся из образов стенда.
+PROMETHEUS_IMAGE := prom/prometheus:v3.15.1
+ALERTMANAGER_IMAGE := prom/alertmanager:v0.34.1
+PROMTOOL := docker run --rm -v "$(CURDIR)":/repo -v "$(CURDIR)/deploy/prometheus/rules":/etc/prometheus/rules:ro -w /repo --entrypoint promtool $(PROMETHEUS_IMAGE)
+AMTOOL := docker run --rm -v "$(CURDIR)":/repo -w /repo --entrypoint amtool $(ALERTMANAGER_IMAGE)
+
+.PHONY: help run db migrate api bot web test check rules-check stop reset-db recruiter up down logs docker-recruiter
 
 help:
 	@echo "make run       база + миграции + API, бот и кабинет"
@@ -18,7 +24,8 @@ help:
 	@echo "make bot       только бот"
 	@echo "make web       только кабинет рекрутера (http://localhost:5200)"
 	@echo "make test      все тесты"
-	@echo "make check     проверки как в CI: сборка без предупреждений, уязвимые пакеты, миграции, тесты"
+	@echo "make check     проверки как в CI: сборка без предупреждений, уязвимые пакеты, миграции, тесты, правила алертов"
+	@echo "make rules-check  только конфиги Prometheus и Alertmanager и тесты правил (нужен Docker)"
 	@echo "make recruiter LOGIN=anna  создать рекрутера или сменить ему пароль"
 	@echo "make stop      остановить PostgreSQL"
 	@echo "make reset-db  удалить базу и создать заново (данные пропадут)"
@@ -29,6 +36,7 @@ help:
 	@echo "make logs      логи стенда"
 	@echo "Метрики: http://localhost:9090"
 	@echo "Grafana: http://localhost:3000 (admin, пароль из .env)"
+	@echo "Алерты: http://localhost:9093 (runbook — docs/runbooks)"
 	@echo "make docker-recruiter LOGIN=anna  создать рекрутера в стенде"
 	@echo "Не запускайте make up и make run одновременно: два бота с одним токеном мешают друг другу."
 
@@ -64,7 +72,7 @@ test:
 
 # Те же шаги, что job build-test в .github/workflows/ci.yml. dotnet list package всегда возвращает 0,
 # поэтому уязвимости ищем по тексту английского вывода.
-check:
+check: rules-check
 	dotnet restore HireFlow.slnx
 	dotnet build HireFlow.slnx -c Release --no-restore --no-incremental -warnaserror
 	@out=$$(DOTNET_CLI_UI_LANGUAGE=en dotnet list HireFlow.slnx package --vulnerable --include-transitive) || exit 1; \
@@ -74,6 +82,13 @@ check:
 	ConnectionStrings__Postgres="Host=localhost;Database=hireflow;Username=hireflow;Password=x" BotApi__ApiKey=x \
 		dotnet ef migrations has-pending-model-changes --project src/HireFlow.Infrastructure --startup-project src/HireFlow.Api --no-build --configuration Release
 	dotnet test HireFlow.slnx -c Release --no-build
+
+# Конфиг Prometheus с правилами, тесты правил (tests/prometheus) и оба варианта конфига Alertmanager.
+rules-check:
+	$(PROMTOOL) check config deploy/prometheus.yml
+	$(PROMTOOL) check rules deploy/prometheus/rules/*.rules.yml
+	$(PROMTOOL) test rules tests/prometheus/*.test.yml
+	$(AMTOOL) check-config deploy/alertmanager/alertmanager.yml deploy/alertmanager/alertmanager-telegram.yml
 
 recruiter: migrate
 	@test -n "$(LOGIN)" || (echo "Укажите логин: make recruiter LOGIN=anna" && exit 1)
