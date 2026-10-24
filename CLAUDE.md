@@ -4,6 +4,7 @@
 - Тесты: `dotnet test`
 - Локальный запуск: `make run` (PostgreSQL в Docker + API, бот и кабинет через `dotnet run`); стенд целиком в Docker —
   `make up` / `make down` (кабинет на http://localhost:8080). Одновременно не запускать: два бота с одним токеном.
+- Нагрузка и учения на поднятом стенде: `make load` (k6) / `make drill` (учения ставят postgres стенда на паузу), см. `docs/drills`.
 - Один проект или тест: `dotnet test tests/<Проект>.Tests --filter "FullyQualifiedName~<Имя>"`
 - Команды запускаются из корня (решение `HireFlow.slnx`). Интеграционным тестам нужен запущенный Docker.
 - Миграции EF Core (сначала `dotnet tool restore`; строка подключения и ключ бота не хранятся в репозитории, поэтому

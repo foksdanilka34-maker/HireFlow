@@ -14,7 +14,7 @@ ALERTMANAGER_IMAGE := prom/alertmanager:v0.34.1
 PROMTOOL := docker run --rm -v "$(CURDIR)":/repo -v "$(CURDIR)/deploy/prometheus/rules":/etc/prometheus/rules:ro -w /repo --entrypoint promtool $(PROMETHEUS_IMAGE)
 AMTOOL := docker run --rm -v "$(CURDIR)":/repo -w /repo --entrypoint amtool $(ALERTMANAGER_IMAGE)
 
-.PHONY: help run db migrate api bot web test check rules-check stop reset-db recruiter up down logs docker-recruiter
+.PHONY: help run db migrate api bot web test check rules-check stop reset-db recruiter up down logs docker-recruiter load drill
 
 help:
 	@echo "make run       база + миграции + API, бот и кабинет"
@@ -38,6 +38,8 @@ help:
 	@echo "Grafana: http://localhost:3000 (admin, пароль из .env)"
 	@echo "Алерты: http://localhost:9093 (runbook — docs/runbooks)"
 	@echo "make docker-recruiter LOGIN=anna  создать рекрутера в стенде"
+	@echo "make load      нагрузочный тест k6 на поднятом стенде (RATE=10 DURATION=4m, docs/drills)"
+	@echo "make drill     учения: нагрузка + пауза PostgreSQL стенда (docs/drills/postgres-pause.md)"
 	@echo "Не запускайте make up и make run одновременно: два бота с одним токеном мешают друг другу."
 
 # Создаёт .env из примера при первом запуске и просит вписать токен бота.
@@ -116,3 +118,15 @@ logs:
 docker-recruiter: .env
 	@test -n "$(LOGIN)" || (echo "Укажите логин: make docker-recruiter LOGIN=anna" && exit 1)
 	docker compose --profile app run --rm -it api recruiter $(LOGIN)
+
+# Нагрузочный тест k6 (load/hireflow.js) на уже поднятом стенде: RATE итераций в секунду, удержание DURATION.
+RATE ?= 10
+DURATION ?= 4m
+
+load: .env
+	@docker compose --profile app ps --status running -q api | grep -q . || (echo "Стенд не поднят: сначала make up" && exit 1)
+	docker compose --profile load run --rm k6 run -e RATE=$(RATE) -e DURATION=$(DURATION) /scripts/hireflow.js
+
+# Учения: k6 под нагрузкой, PostgreSQL стенда на паузе, восстановление (docs/drills/postgres-pause.md).
+drill: .env
+	deploy/drill.sh

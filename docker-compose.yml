@@ -205,6 +205,17 @@ services:
       - tempo
       - loki
 
+  # Нагрузочный тест (make load, make drill): ходит в API через Caddy как бот, из .env передаётся только ключ бота.
+  # Стенд должен быть уже поднят (make up); порты не публикуются.
+  k6:
+    profiles: [load]
+    image: grafana/k6:2.3.0
+    environment:
+      BotApi__ApiKey: ${BotApi__ApiKey}
+    volumes:
+      - ./load:/scripts:ro
+    command: ["run", "/scripts/hireflow.js"]
+
 volumes:
   postgres-data:
   resumes:
