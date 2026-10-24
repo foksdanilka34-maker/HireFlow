@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using System.Text.Json.Serialization;
@@ -9,6 +11,7 @@ using HireFlow.Api.Errors;
 using HireFlow.Api.Hosting;
 using HireFlow.Api.JobApplications;
 using HireFlow.Api.Notifications;
+using HireFlow.Api.PublicApi;
 using HireFlow.Api.Recruiters;
 using HireFlow.Api.Security;
 using HireFlow.Api.Vacancies;
@@ -16,12 +19,14 @@ using HireFlow.Application;
 using HireFlow.Application.Common;
 using HireFlow.Application.Resumes;
 using HireFlow.Application.Notifications;
+using HireFlow.Application.PublicApi;
 using HireFlow.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Npgsql;
 using OpenTelemetry;
@@ -77,10 +82,13 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.Configure<NotificationOptions>(builder.Configuration.GetSection(NotificationOptions.SectionName));
 builder.Services.Configure<ResumeUploadOptions>(builder.Configuration.GetSection(ResumeUploadOptions.SectionName));
 builder.Services.Configure<BotApiKeyOptions>(builder.Configuration.GetSection(BotApiKeyOptions.SectionName));
+builder.Services.Configure<PublicApiOptions>(builder.Configuration.GetSection(PublicApiOptions.SectionName));
+var publicApi = builder.Configuration.GetSection(PublicApiOptions.SectionName).Get<PublicApiOptions>()
+    ?? new PublicApiOptions();
 var recruiterAuth = builder.Configuration.GetSection(RecruiterAuthOptions.SectionName).Get<RecruiterAuthOptions>()
     ?? new RecruiterAuthOptions();
 
-// Рекрутер входит по cookie-сессии, бот — по служебному ключу в X-Api-Key.
+// Рекрутер входит по cookie-сессии, бот — по служебному ключу в X-Api-Key, клиент публичного API — по Bearer-ключу.
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -101,7 +109,8 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
             return Task.CompletedTask;
         };
     })
-    .AddScheme<AuthenticationSchemeOptions, BotApiKeyHandler>(BotApiKeyHandler.SchemeName, null);
+    .AddScheme<AuthenticationSchemeOptions, BotApiKeyHandler>(BotApiKeyHandler.SchemeName, null)
+    .AddScheme<AuthenticationSchemeOptions, PublicApiKeyHandler>(PublicApiKeyHandler.SchemeName, null);
 
 // Маршрут без явной политики закрыт сессией рекрутера.
 var recruiterPolicy = new AuthorizationPolicyBuilder(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -115,15 +124,25 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AuthPolicies.RecruiterOrBot, policy => policy
         .AddAuthenticationSchemes(CookieAuthenticationDefaults.AuthenticationScheme, BotApiKeyHandler.SchemeName)
         .RequireAuthenticatedUser())
+    // Только ключ публичного API: другие политики эту схему не включают.
+    .AddPolicy(AuthPolicies.PublicApi, policy => policy
+        .AddAuthenticationSchemes(PublicApiKeyHandler.SchemeName)
+        .RequireAuthenticatedUser())
     .SetFallbackPolicy(recruiterPolicy);
 
-// Лимит попыток входа на IP за минуту, сверх лимита — 429.
+// Лимит попыток входа на IP и запросов публичного API на клиента за минуту, сверх лимита — 429 с Retry-After.
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.OnRejected = (context, _) =>
     {
-        context.HttpContext.RequestServices.GetRequiredService<HireFlowMetrics>().RecruiterLogin("limited");
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+            context.HttpContext.Response.Headers.RetryAfter =
+                ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+
+        var policy = context.HttpContext.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
+        if (policy == AuthPolicies.LoginRateLimit)
+            context.HttpContext.RequestServices.GetRequiredService<HireFlowMetrics>().RecruiterLogin("limited");
         return ValueTask.CompletedTask;
     };
     options.AddPolicy(AuthPolicies.LoginRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
@@ -131,6 +150,14 @@ builder.Services.AddRateLimiter(options =>
         _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = recruiterAuth.LoginAttemptsPerMinute,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        }));
+    options.AddPolicy(AuthPolicies.PublicApiRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = publicApi.RequestsPerMinute,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
         }));
@@ -186,6 +213,12 @@ var app = builder.Build();
 if (args is ["recruiter", var recruiterLogin])
     return await RecruiterCommand.RunAsync(app.Services, recruiterLogin);
 
+// Консольная команда: выдать клиенту публичного API ключ или отозвать его, веб-сервер не запускается.
+if (args is ["api-client", var apiClientName])
+    return await ApiClientCommand.RunAsync(app.Services, apiClientName, revoke: false);
+if (args is ["api-client", var revokedClientName, "revoke"])
+    return await ApiClientCommand.RunAsync(app.Services, revokedClientName, revoke: true);
+
 // Консольная команда: применить миграции, веб-сервер не запускается.
 if (args is ["migrate"])
     return await MigrateCommand.RunAsync(app.Services);
@@ -216,6 +249,7 @@ app.MapCandidateEndpoints();
 app.MapJobApplicationEndpoints();
 app.MapNotificationEndpoints();
 app.MapBotSessionEndpoints();
+app.MapPublicApiEndpoints();
 
 await app.RunAsync();
 return 0;

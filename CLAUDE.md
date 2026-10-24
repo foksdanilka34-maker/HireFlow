@@ -38,7 +38,9 @@
   уникального индекса) и `DbUpdateConcurrencyException` → 409, `TooManyRequestsException` → 429 (`AppExceptionHandler`).
 - Доступ: маршрут без явной политики закрыт сессией рекрутера (fallback-политика). Маршруты бота —
   `.RequireAuthorization(AuthPolicies.Bot)`, общие для бота и кабинета — `AuthPolicies.RecruiterOrBot`, открытые —
-  `.AllowAnonymous()`. Id рекрутера в эндпоинте — `user.GetRecruiterId()`.
+  `.AllowAnonymous()`. Id рекрутера в эндпоинте — `user.GetRecruiterId()`. Публичный API `/v1` —
+  `AuthPolicies.PublicApi` (только `Authorization: Bearer`): ключ клиента не открывает другие маршруты, а cookie и
+  ключ бота не открывают `/v1`.
 - Enum в API и БД пишутся в snake_case (`recruiter_review`): в БД через `SnakeCaseEnumConverter`, в JSON через глобальный конвертер.
 - БД: snake_case naming convention, ключи `uuidv7()`, конфигурации в `Infrastructure/Persistence/Configurations`.
   После изменения модели нужна миграция.

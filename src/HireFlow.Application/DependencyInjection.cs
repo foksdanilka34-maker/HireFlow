@@ -4,6 +4,7 @@ using HireFlow.Application.Common;
 using HireFlow.Application.JobApplications;
 using HireFlow.Application.Matching;
 using HireFlow.Application.Notifications;
+using HireFlow.Application.PublicApi;
 using HireFlow.Application.Recruiters;
 using HireFlow.Application.Resumes;
 using HireFlow.Application.Vacancies;
@@ -24,6 +25,8 @@ public static class DependencyInjection
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IBotSessionService, BotSessionService>();
         services.AddScoped<IRecruiterService, RecruiterService>();
+        services.AddScoped<IApiClientService, ApiClientService>();
+        services.AddScoped<IPublicScreeningService, PublicScreeningService>();
         services.AddSingleton<HireFlowMetrics>();
         return services;
     }

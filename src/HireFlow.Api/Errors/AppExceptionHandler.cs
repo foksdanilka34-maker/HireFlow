@@ -1,3 +1,4 @@
+using System.Globalization;
 using HireFlow.Application.Common;
 using HireFlow.Domain;
 using Microsoft.AspNetCore.Diagnostics;
@@ -30,6 +31,9 @@ public class AppExceptionHandler(IProblemDetailsService problemDetails) : IExcep
             : exception.Message;
 
         context.Response.StatusCode = status.Value;
+        if (exception is TooManyRequestsException { RetryAfter: { } retryAfter })
+            context.Response.Headers.RetryAfter =
+                ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
         return await problemDetails.TryWriteAsync(new ProblemDetailsContext
         {
             HttpContext = context,

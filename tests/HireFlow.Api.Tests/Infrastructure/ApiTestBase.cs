@@ -17,7 +17,7 @@ namespace HireFlow.Api.Tests.Infrastructure;
 // Общие помощники интеграционных тестов: HTTP-вызовы, данные с уникальными именами, доступ к БД и хранилищу.
 public abstract class ApiTestBase(ApiAppFixture app) : IClassFixture<ApiAppFixture>
 {
-    protected static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) },
     };

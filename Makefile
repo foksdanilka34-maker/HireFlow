@@ -14,7 +14,7 @@ ALERTMANAGER_IMAGE := prom/alertmanager:v0.34.1
 PROMTOOL := docker run --rm -v "$(CURDIR)":/repo -v "$(CURDIR)/deploy/prometheus/rules":/etc/prometheus/rules:ro -w /repo --entrypoint promtool $(PROMETHEUS_IMAGE)
 AMTOOL := docker run --rm -v "$(CURDIR)":/repo -w /repo --entrypoint amtool $(ALERTMANAGER_IMAGE)
 
-.PHONY: help run db migrate api bot web test check rules-check stop reset-db recruiter up down logs docker-recruiter load drill
+.PHONY: help run db migrate api bot web test check rules-check stop reset-db recruiter api-client up down logs docker-recruiter docker-api-client load drill
 
 help:
 	@echo "make run       база + миграции + API, бот и кабинет"
@@ -27,6 +27,7 @@ help:
 	@echo "make check     проверки как в CI: сборка без предупреждений, уязвимые пакеты, миграции, тесты, правила алертов"
 	@echo "make rules-check  только конфиги Prometheus и Alertmanager и тесты правил (нужен Docker)"
 	@echo "make recruiter LOGIN=anna  создать рекрутера или сменить ему пароль"
+	@echo "make api-client NAME=acme [REVOKE=1]  выдать клиенту публичного API новый ключ или отозвать его"
 	@echo "make stop      остановить PostgreSQL"
 	@echo "make reset-db  удалить базу и создать заново (данные пропадут)"
 	@echo ""
@@ -38,6 +39,7 @@ help:
 	@echo "Grafana: http://localhost:3000 (admin, пароль из .env)"
 	@echo "Алерты: http://localhost:9093 (runbook — docs/runbooks)"
 	@echo "make docker-recruiter LOGIN=anna  создать рекрутера в стенде"
+	@echo "make docker-api-client NAME=acme [REVOKE=1]  выдать или отозвать ключ публичного API в стенде"
 	@echo "make load      нагрузочный тест k6 на поднятом стенде (RATE=10 DURATION=4m, docs/drills)"
 	@echo "make drill     учения: нагрузка + пауза PostgreSQL стенда (docs/drills/postgres-pause.md)"
 	@echo "Не запускайте make up и make run одновременно: два бота с одним токеном мешают друг другу."
@@ -96,6 +98,11 @@ recruiter: migrate
 	@test -n "$(LOGIN)" || (echo "Укажите логин: make recruiter LOGIN=anna" && exit 1)
 	$(ENV) dotnet run --project src/HireFlow.Api -- recruiter $(LOGIN)
 
+# Ключ публичного API печатается один раз; REVOKE=1 — отозвать ключ.
+api-client: migrate
+	@test -n "$(NAME)" || (echo "Укажите клиента: make api-client NAME=acme [REVOKE=1]" && exit 1)
+	$(ENV) dotnet run --project src/HireFlow.Api -- api-client $(NAME) $(if $(REVOKE),revoke)
+
 stop:
 	docker compose stop postgres
 
@@ -118,6 +125,10 @@ logs:
 docker-recruiter: .env
 	@test -n "$(LOGIN)" || (echo "Укажите логин: make docker-recruiter LOGIN=anna" && exit 1)
 	docker compose --profile app run --rm -it api recruiter $(LOGIN)
+
+docker-api-client: .env
+	@test -n "$(NAME)" || (echo "Укажите клиента: make docker-api-client NAME=acme [REVOKE=1]" && exit 1)
+	docker compose --profile app run --rm api api-client $(NAME) $(if $(REVOKE),revoke)
 
 # Нагрузочный тест k6 (load/hireflow.js) на уже поднятом стенде: RATE итераций в секунду, удержание DURATION.
 RATE ?= 10
