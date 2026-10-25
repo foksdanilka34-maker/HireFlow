@@ -1,0 +1,160 @@
+# Алерты HireFlow. severity: critical — сервис недоступен или бюджет ошибок сгорает быстро, warning — деградация.
+# В summary нет символов < > &: Alertmanager шлёт их в Telegram как HTML.
+groups:
+  - name: slo
+    rules:
+      # Burn rate 14.4 за 1 ч и 5 мин: при таком темпе 2% месячного бюджета уходят за час.
+      # Не меньше 20 запросов за час: 1 ошибка из 2 запросов ночью — не авария.
+      - alert: ApiErrorBudgetFastBurn
+        expr: |
+          slo:api_request_errors:ratio_rate1h > (14.4 * 0.005)
+          and slo:api_request_errors:ratio_rate5m > (14.4 * 0.005)
+          and sum(increase(http_server_request_duration_seconds_count{service_name="hireflow-api", http_route!~"/health.*"}[1h])) >= 20
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: API быстро тратит бюджет ошибок (5xx)
+          description: 'Доля 5xx за час {{ $value | humanizePercentage }} при цели не больше 0,5%.'
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/ApiErrorBudgetFastBurn.md
+
+      # Burn rate 6 за 6 ч и 30 мин: 5% месячного бюджета за 6 часов; не меньше 50 запросов за 6 ч.
+      - alert: ApiErrorBudgetSlowBurn
+        expr: |
+          slo:api_request_errors:ratio_rate6h > (6 * 0.005)
+          and slo:api_request_errors:ratio_rate30m > (6 * 0.005)
+          and sum(increase(http_server_request_duration_seconds_count{service_name="hireflow-api", http_route!~"/health.*"}[6h])) >= 50
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: API медленно тратит бюджет ошибок (5xx)
+          description: 'Доля 5xx за 6 часов {{ $value | humanizePercentage }} при цели не больше 0,5%.'
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/ApiErrorBudgetSlowBurn.md
+
+      # SLO задержки: 95% запросов быстрее 1 с; не меньше 20 запросов за 15 мин.
+      - alert: ApiLatencyHigh
+        expr: |
+          (
+            sum(rate(http_server_request_duration_seconds_bucket{service_name="hireflow-api", http_route!~"/health.*", le="1"}[15m]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="hireflow-api", http_route!~"/health.*"}[15m]))
+          ) < 0.95
+          and sum(increase(http_server_request_duration_seconds_count{service_name="hireflow-api", http_route!~"/health.*"}[15m])) >= 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Меньше 95% запросов к API быстрее 1 с
+          description: 'Доля запросов быстрее 1 с за 15 минут: {{ $value | humanizePercentage }}.'
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/ApiLatencyHigh.md
+
+      # SLO скрининга: 99% откликов быстрее 60 с; не меньше 10 скринингов за час.
+      - alert: ScreeningSlow
+        expr: |
+          (
+            sum(rate(hireflow_screening_duration_seconds_bucket{le="60"}[1h]))
+            /
+            sum(rate(hireflow_screening_duration_seconds_count[1h]))
+          ) < 0.99
+          and sum(increase(hireflow_screening_duration_seconds_count[1h])) >= 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Меньше 99% скринингов быстрее 60 с
+          description: 'Доля скринингов быстрее 60 с за час: {{ $value | humanizePercentage }}.'
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/ScreeningSlow.md
+
+      # SLO публичного API: 99% успешных скринингов с телом до 2 МБ быстрее 1 с; не меньше 20 таких запросов за час.
+      - alert: PublicApiSlow
+        expr: |
+          (
+            sum(rate(hireflow_public_api_request_duration_seconds_bucket{http_route="/v1/screenings", size="small", status_code="200", le="1"}[1h]))
+            /
+            sum(rate(hireflow_public_api_request_duration_seconds_count{http_route="/v1/screenings", size="small", status_code="200"}[1h]))
+          ) < 0.99
+          and sum(increase(hireflow_public_api_request_duration_seconds_count{http_route="/v1/screenings", size="small", status_code="200"}[1h])) >= 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Меньше 99% скринингов публичного API быстрее 1 с
+          description: 'Доля успешных скринингов с телом до 2 МБ быстрее 1 с за час: {{ $value | humanizePercentage }}.'
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/PublicApiSlow.md
+
+  - name: notifications
+    rules:
+      # Снимок из БД раз в 30 с: pending-уведомления дольше 5 минут после send_after.
+      - alert: NotificationsStuck
+        expr: max(hireflow_notifications_overdue) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Уведомления кандидатам зависли
+          description: 'Просроченных уведомлений: {{ $value }}.'
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/NotificationsStuck.md
+
+      - alert: NotificationsFailed
+        expr: max(delta(hireflow_notifications_failed[1h])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: За час появились уведомления, которые не удалось доставить
+          description: 'Новых failed-уведомлений за час: {{ $value | printf "%.0f" }}.'
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/NotificationsFailed.md
+
+  - name: availability
+    rules:
+      # Healthcheck Docker ходит в /health/ready каждые 15 с, поэтому у живого API ряды есть всегда.
+      # Нет точек 1 мин + for 2 мин = около 3 минут; for не даёт сработать при старте стенда, пока API не поднялся.
+      - alert: ApiDown
+        expr: absent_over_time(http_server_request_duration_seconds_count{service_name="hireflow-api"}[1m])
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Нет метрик API 3 минуты
+          description: API не работает или не отправляет телеметрию.
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/ApiDown.md
+
+      # Рантайм-метрики (meter System.Runtime) бот отправляет каждые 15 с, даже без сообщений.
+      # Нет точек 1 мин + for 4 мин = около 5 минут.
+      - alert: BotDown
+        expr: absent_over_time(dotnet_process_cpu_time_seconds_total{service_name="hireflow-bot"}[1m])
+        for: 4m
+        labels:
+          severity: critical
+        annotations:
+          summary: Нет метрик бота 5 минут
+          description: Бот не работает или не отправляет телеметрию, кандидаты не получают ответов.
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/BotDown.md
+
+      - alert: BotPollingErrors
+        expr: sum(increase(hireflow_bot_polling_errors_total[10m])) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: Бот не может получать сообщения из Telegram
+          description: 'Сбоев GetUpdates за 10 минут: {{ $value | humanize }}.'
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/BotPollingErrors.md
+
+      - alert: BotMessagesDropped
+        expr: sum(increase(hireflow_bot_messages_dropped_total[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Бот отбрасывает сообщения кандидатов
+          description: 'Отброшено сообщений за 10 минут: {{ $value | humanize }}.'
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/BotMessagesDropped.md
+
+      - alert: TelemetryCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: OTel Collector недоступен
+          description: Метрики, трейсы и логи API и бота не доходят; алерты по ним молчат или ложные.
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/TelemetryCollectorDown.md

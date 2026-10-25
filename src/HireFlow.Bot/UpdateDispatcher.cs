@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using HireFlow.Bot.Dialog;
 using Microsoft.Extensions.Logging;
@@ -8,7 +9,8 @@ namespace HireFlow.Bot;
 public class UpdateDispatcher(
     int workers,
     Func<IncomingMessage, CancellationToken, Task> handler,
-    ILogger<UpdateDispatcher> logger)
+    ILogger<UpdateDispatcher> logger,
+    BotMetrics? metrics = null)
 {
     private const int QueueCapacity = 100;
 
@@ -28,7 +30,10 @@ public class UpdateDispatcher(
     {
         var index = (int)((ulong)message.UserId % (ulong)_queues.Length);
         if (!_queues[index].Writer.TryWrite(message))
+        {
             logger.LogWarning("Message dropped: queue {QueueIndex} is full", index);
+            metrics?.MessageDropped();
+        }
         return ValueTask.CompletedTask;
     }
 
@@ -45,13 +50,18 @@ public class UpdateDispatcher(
     {
         await foreach (var message in reader.ReadAllAsync(CancellationToken.None))
         {
+            using var activity = BotTelemetry.Source.StartActivity("bot.message");
+            activity?.SetTag(BotTelemetry.MessageKindTag, BotTelemetry.MessageKind(message));
             try
             {
                 await handler(message, CancellationToken.None);
+                metrics?.MessageHandled(ok: true);
             }
             catch (Exception ex)
             {
+                activity?.SetStatus(ActivityStatusCode.Error);
                 logger.LogError("Message handling failed: {ErrorType}", ex.GetType().Name);
+                metrics?.MessageHandled(ok: false);
             }
         }
     }

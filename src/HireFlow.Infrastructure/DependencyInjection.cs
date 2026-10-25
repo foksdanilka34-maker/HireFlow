@@ -1,8 +1,10 @@
 using HireFlow.Application.Common;
+using HireFlow.Application.PublicApi;
 using HireFlow.Application.Recruiters;
 using HireFlow.Application.Resumes;
 using HireFlow.Infrastructure.Files;
 using HireFlow.Infrastructure.Persistence;
+using HireFlow.Infrastructure.PublicApi;
 using HireFlow.Infrastructure.Resumes;
 using HireFlow.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +26,7 @@ public static class DependencyInjection
         services.AddSingleton<IFileStorage>(new LocalFileStorage(storagePath));
         services.AddSingleton<IResumeTextExtractor, ResumeTextExtractor>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
+        services.AddScoped<IApiUsageCounter, ApiUsageCounter>();
 
         return services;
     }

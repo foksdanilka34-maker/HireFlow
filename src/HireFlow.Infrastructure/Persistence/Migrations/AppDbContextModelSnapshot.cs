@@ -23,6 +23,78 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("HireFlow.Domain.ApiClients.ApiClient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("uuidv7()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("DailyQuota")
+                        .HasColumnType("integer")
+                        .HasColumnName("daily_quota");
+
+                    b.Property<string>("KeyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key_hash");
+
+                    b.Property<string>("KeyPrefix")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("key_prefix");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_api_clients");
+
+                    b.HasIndex("KeyHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_api_clients_key_hash");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_api_clients_name");
+
+                    b.ToTable("api_clients", (string)null);
+                });
+
+            modelBuilder.Entity("HireFlow.Domain.ApiClients.ApiUsage", b =>
+                {
+                    b.Property<Guid>("ApiClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("api_client_id");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer")
+                        .HasColumnName("count");
+
+                    b.HasKey("ApiClientId", "Day")
+                        .HasName("pk_api_usages");
+
+                    b.ToTable("api_usages", (string)null);
+                });
+
             modelBuilder.Entity("HireFlow.Domain.BotSessions.BotSession", b =>
                 {
                     b.Property<Guid>("Id")
@@ -488,6 +560,16 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                         .HasName("pk_vacancies");
 
                     b.ToTable("vacancies", (string)null);
+                });
+
+            modelBuilder.Entity("HireFlow.Domain.ApiClients.ApiUsage", b =>
+                {
+                    b.HasOne("HireFlow.Domain.ApiClients.ApiClient", null)
+                        .WithMany()
+                        .HasForeignKey("ApiClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_api_usages_api_clients_api_client_id");
                 });
 
             modelBuilder.Entity("HireFlow.Domain.JobApplications.ApplicationStatusChange", b =>

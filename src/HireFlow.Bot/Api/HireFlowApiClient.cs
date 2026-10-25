@@ -6,7 +6,8 @@ using Microsoft.Extensions.Logging;
 
 namespace HireFlow.Bot.Api;
 
-public class HireFlowApiClient(HttpClient http, ILogger<HireFlowApiClient> logger) : IHireFlowApiClient
+public class HireFlowApiClient(HttpClient http, ILogger<HireFlowApiClient> logger, BotMetrics? metrics = null)
+    : IHireFlowApiClient
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -119,6 +120,7 @@ public class HireFlowApiClient(HttpClient http, ILogger<HireFlowApiClient> logge
         catch (Exception ex) when (IsTransient(ex, ct))
         {
             logger.LogWarning("API call {Operation} failed: {ErrorType}", operation, ex.GetType().Name);
+            metrics?.ApiError(operation);
             return ApiResult<T>.Failure(ApiStatus.Error);
         }
     }
@@ -135,6 +137,7 @@ public class HireFlowApiClient(HttpClient http, ILogger<HireFlowApiClient> logge
         catch (Exception ex) when (IsTransient(ex, ct))
         {
             logger.LogWarning("API call {Operation} failed: {ErrorType}", operation, ex.GetType().Name);
+            metrics?.ApiError(operation);
             return ApiStatus.Error;
         }
     }
@@ -158,7 +161,10 @@ public class HireFlowApiClient(HttpClient http, ILogger<HireFlowApiClient> logge
         };
 
         if (status == ApiStatus.Error)
+        {
             logger.LogWarning("API call {Operation} returned {StatusCode}", operation, (int)code);
+            metrics?.ApiError(operation);
+        }
 
         return status;
     }

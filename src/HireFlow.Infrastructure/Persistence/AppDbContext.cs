@@ -1,4 +1,5 @@
 using HireFlow.Application.Common;
+using HireFlow.Domain.ApiClients;
 using HireFlow.Domain.BotSessions;
 using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
@@ -20,6 +21,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<BotSession> BotSessions => Set<BotSession>();
     public DbSet<ResumeUpload> ResumeUploads => Set<ResumeUpload>();
     public DbSet<Recruiter> Recruiters => Set<Recruiter>();
+    public DbSet<ApiClient> ApiClients => Set<ApiClient>();
+    public DbSet<ApiUsage> ApiUsages => Set<ApiUsage>();
 
     // Сохраняет изменения; нарушение уникального индекса (гонка двух запросов) превращает в ConflictException.
     public override async Task<int> SaveChangesAsync(CancellationToken ct = default)

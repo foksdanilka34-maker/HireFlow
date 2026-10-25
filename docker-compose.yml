@@ -15,5 +15,213 @@ services:
       timeout: 3s
       retries: 10
 
+  # Стенд целиком (make up): одноразовые миграции, API, бот и кабинет за Caddy на http://localhost:8080.
+  migrate:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: src/HireFlow.Api/Dockerfile
+    image: hireflow-api
+    command: ["migrate"]
+    restart: "no"
+    env_file: .env
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Database=hireflow;Username=hireflow;Password=${POSTGRES_PASSWORD}
+      Storage__LocalPath: /app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    profiles: [app]
+    image: hireflow-api
+    env_file: .env
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Database=hireflow;Username=hireflow;Password=${POSTGRES_PASSWORD}
+      Storage__LocalPath: /app/storage
+      Hosting__TrustForwardedHeaders: "true"
+      Hosting__DataProtectionKeysPath: /app/keys
+      Telemetry__OtlpEndpoint: http://otel-collector:4318
+    volumes:
+      - resumes:/app/storage
+      - dp-keys:/app/keys
+    restart: unless-stopped
+    # Команда самого API: GET /health/ready (в образе aspnet нет curl).
+    healthcheck:
+      test: ["CMD", "dotnet", "HireFlow.Api.dll", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+
+  bot:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: src/HireFlow.Bot/Dockerfile
+    image: hireflow-bot
+    env_file: .env
+    environment:
+      Bot__ApiBaseUrl: http://api:8080
+      Telemetry__OtlpEndpoint: http://otel-collector:4318
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  web:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: src/HireFlow.Web/Dockerfile
+    image: hireflow-web
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Метрики API и бота через коллектор по OTLP, правила SLO и алертов; UI только с хоста: http://localhost:9090.
+  prometheus:
+    profiles: [app]
+    image: prom/prometheus:v3.15.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-otlp-receiver
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+    depends_on:
+      - alertmanager
+
+  # Алерты из правил Prometheus: UI только с хоста, http://localhost:9093. Telegram-бот дежурного необязателен:
+  # если в .env заданы ALERT_TELEGRAM_BOT_TOKEN и ALERT_TELEGRAM_CHAT_ID, они пишутся в файлы во /tmp контейнера
+  # (bot_token_file/chat_id_file) и берётся конфиг с рассылкой, иначе — без рассылки.
+  alertmanager:
+    profiles: [app]
+    image: prom/alertmanager:v0.34.1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        config=/etc/alertmanager/alertmanager.yml
+        if [ -n "$$ALERT_TELEGRAM_BOT_TOKEN" ] && [ -n "$$ALERT_TELEGRAM_CHAT_ID" ]; then
+          mkdir -p /tmp/telegram
+          printf '%s' "$$ALERT_TELEGRAM_BOT_TOKEN" > /tmp/telegram/bot_token
+          printf '%s' "$$ALERT_TELEGRAM_CHAT_ID" > /tmp/telegram/chat_id
+          config=/etc/alertmanager/alertmanager-telegram.yml
+          echo "Alertmanager: рассылка в Telegram включена"
+        elif [ -n "$$ALERT_TELEGRAM_BOT_TOKEN" ] || [ -n "$$ALERT_TELEGRAM_CHAT_ID" ]; then
+          echo "Alertmanager: задана только одна из ALERT_TELEGRAM_BOT_TOKEN и ALERT_TELEGRAM_CHAT_ID, рассылка в Telegram выключена"
+        fi
+        exec /bin/alertmanager --config.file=$$config --storage.path=/alertmanager --cluster.listen-address=
+    environment:
+      ALERT_TELEGRAM_BOT_TOKEN: ${ALERT_TELEGRAM_BOT_TOKEN:-}
+      ALERT_TELEGRAM_CHAT_ID: ${ALERT_TELEGRAM_CHAT_ID:-}
+    volumes:
+      - ./deploy/alertmanager:/etc/alertmanager:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    restart: unless-stopped
+
+  # Коллектор OTLP: трейсы → Tempo, логи → Loki, метрики → Prometheus; наружу не открыт.
+  otel-collector:
+    profiles: [app]
+    image: otel/opentelemetry-collector-contrib:0.163.2
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./deploy/otel-collector.yml:/etc/otelcol/config.yml:ro
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+
+  # Новый volume создаётся с владельцем root, а Tempo работает от пользователя 10001: один раз отдаём ему папку.
+  tempo-init:
+    profiles: [app]
+    image: busybox:1.37.0
+    command: ["chown", "-R", "10001:10001", "/var/tempo"]
+    volumes:
+      - tempo-data:/var/tempo
+    restart: "no"
+
+  tempo:
+    profiles: [app]
+    image: grafana/tempo:2.10.10
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./deploy/tempo.yml:/etc/tempo.yml:ro
+      - tempo-data:/var/tempo
+    restart: unless-stopped
+    depends_on:
+      tempo-init:
+        condition: service_completed_successfully
+
+  loki:
+    profiles: [app]
+    image: grafana/loki:3.7.9
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./deploy/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+
+  # Grafana: http://localhost:3000, вход admin + GRAFANA_ADMIN_PASSWORD из .env.
+  grafana:
+    profiles: [app]
+    image: grafana/grafana:13.2.4
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is not set in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - alertmanager
+      - tempo
+      - loki
+
+  # Нагрузочный тест (make load, make drill): ходит в API через Caddy как бот, из .env передаётся только ключ бота.
+  # Стенд должен быть уже поднят (make up); порты не публикуются.
+  k6:
+    profiles: [load]
+    image: grafana/k6:2.3.0
+    environment:
+      BotApi__ApiKey: ${BotApi__ApiKey}
+    volumes:
+      - ./load:/scripts:ro
+    command: ["run", "/scripts/hireflow.js"]
+
 volumes:
   postgres-data:
+  resumes:
+  dp-keys:
+  prometheus-data:
+  alertmanager-data:
+  tempo-data:
+  loki-data:
+  grafana-data:

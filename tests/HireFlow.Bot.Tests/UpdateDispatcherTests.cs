@@ -1,4 +1,6 @@
 using HireFlow.Bot.Dialog;
+using System.Diagnostics.Metrics;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace HireFlow.Bot.Tests;
@@ -97,5 +99,43 @@ public class UpdateDispatcherTests
         await completing.WaitAsync(Timeout);
 
         Assert.Equal(["1", "2", "3"], handled);
+    }
+
+    // Метрики бота: каждое сообщение учитывается как ok или failed, исключение обработчика не теряется.
+    [Theory]
+    [InlineData(false, "ok")]
+    [InlineData(true, "failed")]
+    public async Task HandledMessageIsCountedWithResultTag(bool handlerThrows, string result)
+    {
+        using var services = new ServiceCollection().AddMetrics().BuildServiceProvider();
+        var meterFactory = services.GetRequiredService<IMeterFactory>();
+        var metrics = new BotMetrics(meterFactory);
+        var measurements = new List<(long Value, string[] Keys, object? Result)>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (ReferenceEquals(instrument.Meter, metrics.Meter) && instrument.Name == "hireflow.bot.messages")
+                l.EnableMeasurementEvents(instrument);
+        };
+        listener.SetMeasurementEventCallback<long>((_, value, tags, _) =>
+        {
+            lock (measurements)
+                measurements.Add((value, tags.ToArray().Select(t => t.Key).ToArray(), tags.ToArray().Single(t => t.Key == "result").Value));
+        });
+        listener.Start();
+        var dispatcher = new UpdateDispatcher(
+            2,
+            (_, _) => handlerThrows ? throw new InvalidOperationException("boom") : Task.CompletedTask,
+            NullLogger<UpdateDispatcher>.Instance,
+            metrics);
+        dispatcher.Start();
+
+        await dispatcher.EnqueueAsync(Message(1, "text"), CancellationToken.None);
+        await dispatcher.CompleteAsync().WaitAsync(Timeout);
+
+        var (value, keys, actual) = Assert.Single(measurements);
+        Assert.Equal(1, value);
+        Assert.Equal(["result"], keys);
+        Assert.Equal(result, actual);
     }
 }

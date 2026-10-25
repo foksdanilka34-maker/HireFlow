@@ -15,7 +15,7 @@ var apiBaseUrl = builder.Configuration["ApiBaseUrl"]
 builder.Services.AddSingleton<AuthState>();
 builder.Services.AddSingleton(_ => new HttpClient(new CookieHandler { InnerHandler = new HttpClientHandler() })
 {
-    BaseAddress = new Uri(apiBaseUrl),
+    BaseAddress = ApiAddress.Resolve(builder.HostEnvironment.BaseAddress, apiBaseUrl),
 });
 builder.Services.AddSingleton<HireFlowApiClient>();
 

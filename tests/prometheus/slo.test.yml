@@ -1,0 +1,129 @@
+# Тесты правил SLO API и скрининга: promtool test rules (make rules-check).
+# Ряды синтетические: шаг 1 мин, поэтому окна rate за 5m и 30m содержат несколько точек.
+# Состояние алерта проверяется по ряду ALERTS (promql_expr_test): alert_rule_test сравнивает ещё и аннотации,
+# и правка текста summary или description ломала бы тесты.
+rule_files:
+  - ../../deploy/prometheus/rules/slo.rules.yml
+  - ../../deploy/prometheus/rules/alerts.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 2 запроса в секунду, 10% из них 5xx в течение часа: критичный алерт должен сработать.
+  - name: FastBurn срабатывает при 10 процентах 5xx
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/api/vacancies", http_response_status_code="200"}'
+        values: '0+108x119'
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/api/vacancies", http_response_status_code="500"}'
+        values: '0+12x119'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ApiErrorBudgetFastBurn", alertstate="firing"}
+        eval_time: 70m
+        exp_samples:
+          - labels: 'ALERTS{alertname="ApiErrorBudgetFastBurn", alertstate="firing", severity="critical"}'
+            value: 1
+
+  # Те же 2 запроса в секунду, 0,1% ошибок (цель 0,5%): тревоги быть не должно.
+  - name: FastBurn не срабатывает при 0,1 процента 5xx
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/api/vacancies", http_response_status_code="200"}'
+        values: '0+119.88x119'
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/api/vacancies", http_response_status_code="500"}'
+        values: '0+0.12x119'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ApiErrorBudgetFastBurn", alertstate="firing"}
+        eval_time: 70m
+        exp_samples: []
+
+  # За час 3 запроса, один из них 5xx, и все они в последние 5 минут: доля ошибок 33% в обоих окнах,
+  # так что алерт не срабатывает только из-за порога по числу запросов. 66m: условия уже выполняются дольше for.
+  - name: FastBurn не срабатывает при малом трафике
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/api/vacancies", http_response_status_code="200"}'
+        values: '0x62 2x10'
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/api/vacancies", http_response_status_code="500"}'
+        values: '0x62 1x10'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ApiErrorBudgetFastBurn", alertstate="firing"}
+        eval_time: 66m
+        exp_samples: []
+
+  # Всплеск 25% 5xx первые 30 минут, потом 20 минут без ошибок при обычном трафике: за час доля 15% выше порога,
+  # но за 5 минут ошибок нет, авария закончилась. Без условия по окну 5m алерт висел бы.
+  - name: FastBurn не срабатывает после окончания всплеска
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/api/vacancies", http_response_status_code="200"}'
+        values: '0+90x30 2820+120x39'
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/api/vacancies", http_response_status_code="500"}'
+        values: '0+30x30 900x39'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ApiErrorBudgetFastBurn", alertstate="firing"}
+        eval_time: 50m
+        exp_samples: []
+
+  # Обычный трафик без ошибок, а /health/ready отвечает 503 вдвое чаще, чем API отдаёт 200: healthcheck исключён.
+  - name: FastBurn не срабатывает от 5xx на health
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/api/vacancies", http_response_status_code="200"}'
+        values: '0+120x119'
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/health/ready", http_response_status_code="503"}'
+        values: '0+240x119'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ApiErrorBudgetFastBurn", alertstate="firing"}
+        eval_time: 70m
+        exp_samples: []
+
+  # 4% ошибок 6,5 часов: выше порога медленного сгорания (3%), но ниже быстрого (7,2%).
+  - name: SlowBurn срабатывает при 4 процентах 5xx, FastBurn молчит
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/api/vacancies", http_response_status_code="200"}'
+        values: '0+115.2x399'
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/api/vacancies", http_response_status_code="500"}'
+        values: '0+4.8x399'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ApiErrorBudgetSlowBurn", alertstate="firing"}
+        eval_time: 390m
+        exp_samples:
+          - labels: 'ALERTS{alertname="ApiErrorBudgetSlowBurn", alertstate="firing", severity="warning"}'
+            value: 1
+      - expr: ALERTS{alertname="ApiErrorBudgetFastBurn", alertstate="firing"}
+        eval_time: 390m
+        exp_samples: []
+
+  # 2 скрининга в минуту, 2% из них дольше 60 с (в корзину le=60 попадают 98%): SLO 99% нарушено.
+  - name: ScreeningSlow срабатывает при 2 процентах медленных
+    interval: 1m
+    input_series:
+      - series: 'hireflow_screening_duration_seconds_bucket{le="60"}'
+        values: '0+1.96x119'
+      - series: 'hireflow_screening_duration_seconds_bucket{le="+Inf"}'
+        values: '0+2x119'
+      - series: 'hireflow_screening_duration_seconds_count'
+        values: '0+2x119'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ScreeningSlow", alertstate="firing"}
+        eval_time: 70m
+        exp_samples:
+          - labels: 'ALERTS{alertname="ScreeningSlow", alertstate="firing", severity="warning"}'
+            value: 1
+
+  # 0,5% медленных: SLO выполнено, тревоги нет.
+  - name: ScreeningSlow не срабатывает при 0,5 процента медленных
+    interval: 1m
+    input_series:
+      - series: 'hireflow_screening_duration_seconds_bucket{le="60"}'
+        values: '0+1.99x119'
+      - series: 'hireflow_screening_duration_seconds_bucket{le="+Inf"}'
+        values: '0+2x119'
+      - series: 'hireflow_screening_duration_seconds_count'
+        values: '0+2x119'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ScreeningSlow", alertstate="firing"}
+        eval_time: 70m
+        exp_samples: []

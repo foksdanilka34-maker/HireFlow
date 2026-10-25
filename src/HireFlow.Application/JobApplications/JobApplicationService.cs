@@ -6,6 +6,7 @@ using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
 using HireFlow.Domain.Notifications;
 using HireFlow.Domain.Screening;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -15,7 +16,8 @@ public class JobApplicationService(
     IAppDbContext db,
     IResumeReader resumeReader,
     IFileStorage fileStorage,
-    IOptions<NotificationOptions> notificationOptions)
+    IOptions<NotificationOptions> notificationOptions,
+    HireFlowMetrics metrics)
     : IJobApplicationService
 {
     private readonly TimeSpan _rejectionDelay = notificationOptions.Value.RejectionDelay;
@@ -32,7 +34,10 @@ public class JobApplicationService(
             && await db.JobApplications.AnyAsync(a => a.CandidateId == candidate.Id && a.VacancyId == vacancy.Id, ct))
             throw new DomainException("Candidate has already applied to this vacancy.");
 
+        var screeningStarted = Stopwatch.GetTimestamp();
         var resume = resumeReader.Read(request.FileContent);
+        var screening = ResumeScorer.Evaluate(resume.Text, request.YearsOfExperience, vacancy.Requirements);
+        var screeningDuration = Stopwatch.GetElapsedTime(screeningStarted);
 
         // Нового кандидата создаём вместе с откликом: имя из запроса, телефон — введённый или найденный в резюме.
         if (candidate is null)
@@ -53,11 +58,12 @@ public class JobApplicationService(
             resume.Hash,
             resume.Text);
 
-        var screening = ResumeScorer.Evaluate(resume.Text, request.YearsOfExperience, vacancy.Requirements);
         application.ApplyScreening(screening, _rejectionDelay);
 
         db.JobApplications.Add(application);
         await db.SaveChangesAsync(ct);
+        metrics.ScreeningDuration(screeningDuration);
+        metrics.ApplicationCreated(screening.Verdict);
 
         return ApplicationResponse.From(application, vacancy, candidate, new Dictionary<Guid, string>(), rejectionSent: false);
     }
@@ -126,12 +132,14 @@ public class JobApplicationService(
             .FirstOrDefaultAsync(a => a.Id == id, ct)
             ?? throw new NotFoundException($"Application {id} not found.");
 
+        var fromStatus = application.Status;
         if (request.Decision == RecruiterDecision.Invite)
             application.Invite(recruiterId, request.Comment);
         else
             application.Reject(recruiterId, request.Comment, _rejectionDelay);
 
         await db.SaveChangesAsync(ct);
+        metrics.Decision(request.Decision ?? RecruiterDecision.Reject, fromStatus);
         return await ToResponseAsync(application, ct);
     }
 

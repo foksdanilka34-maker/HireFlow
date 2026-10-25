@@ -17,7 +17,7 @@ namespace HireFlow.Api.Tests.Infrastructure;
 // Общие помощники интеграционных тестов: HTTP-вызовы, данные с уникальными именами, доступ к БД и хранилищу.
 public abstract class ApiTestBase(ApiAppFixture app) : IClassFixture<ApiAppFixture>
 {
-    protected static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower) },
     };
@@ -139,12 +139,12 @@ public abstract class ApiTestBase(ApiAppFixture app) : IClassFixture<ApiAppFixtu
             .ToListAsync();
     }
 
-    // Сдвигает send_after уведомления в прошлое, чтобы оно стало «наступившим».
-    protected async Task MakeDueAsync(Guid notificationId)
+    // Сдвигает send_after уведомления в прошлое (по умолчанию на 5 минут), чтобы оно стало «наступившим».
+    protected async Task MakeDueAsync(Guid notificationId, TimeSpan? ago = null)
     {
         await using var scope = App.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var past = DateTime.UtcNow.AddMinutes(-5);
+        var past = DateTime.UtcNow - (ago ?? TimeSpan.FromMinutes(5));
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"UPDATE notifications SET send_after = {past} WHERE id = {notificationId}");
     }

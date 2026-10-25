@@ -11,7 +11,8 @@ namespace HireFlow.Bot;
 public class UpdateReceiverService(
     IServiceScopeFactory scopes,
     UpdateDispatcher dispatcher,
-    ILogger<UpdateReceiverService> logger) : BackgroundService
+    ILogger<UpdateReceiverService> logger,
+    BotMetrics metrics) : BackgroundService
 {
     private const int LongPollSeconds = 30;
     private static readonly TimeSpan ErrorDelay = TimeSpan.FromSeconds(5);
@@ -49,6 +50,7 @@ public class UpdateReceiverService(
             catch (Exception ex)
             {
                 logger.LogWarning("Polling failed: {ErrorType}", ex.GetType().Name);
+                metrics.PollingError();
                 await DelayAsync(stoppingToken);
             }
         }

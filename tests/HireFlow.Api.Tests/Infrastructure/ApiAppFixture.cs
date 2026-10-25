@@ -29,13 +29,21 @@ public class ApiAppFixture : IAsyncLifetime
     // Входит ли основной Client при старте (тест лимита отключает: каждая попытка входа на счету).
     protected virtual bool LoginMainClient => true;
 
+    // Дополнительные настройки приложения этой фикстуры (ключ конфигурации -> значение).
+    protected virtual IReadOnlyDictionary<string, string> ExtraSettings { get; } = new Dictionary<string, string>();
+
+    // Дополнительные сервисы приложения этой фикстуры (например, экспортёр трейсов); по умолчанию ничего.
+    protected virtual void ConfigureServices(IServiceCollection services)
+    {
+    }
+
     public async Task InitializeAsync()
     {
         ConnectionString = await SharedPostgres.CreateDatabaseAsync();
         StoragePath = Path.Combine(Path.GetTempPath(), "hireflow-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(StoragePath);
 
-        _factory = new ApiFactory(ConnectionString, StoragePath, LoginAttemptsPerMinute);
+        _factory = new ApiFactory(ConnectionString, StoragePath, LoginAttemptsPerMinute, ExtraSettings, ConfigureServices);
         Client = CreateClient(ApiFactory.BotApiKey);
 
         await using var scope = Services.CreateAsyncScope();
@@ -79,7 +87,7 @@ public class ApiAppFixture : IAsyncLifetime
         return client;
     }
 
-    public async Task DisposeAsync()
+    public virtual async Task DisposeAsync()
     {
         try
         {

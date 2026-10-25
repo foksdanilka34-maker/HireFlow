@@ -4,6 +4,12 @@ using HireFlow.Bot.Dialog;
 using HireFlow.Bot.Telegram;
 using global::Telegram.Bot;
 using Microsoft.Extensions.Options;
+using OpenTelemetry;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -22,6 +28,32 @@ builder.Services.AddOptions<BotOptions>()
     .Validate(o => o.PageSize > 0, "Bot:PageSize must be positive.")
     .Validate(o => o.Workers is >= 1 and <= 64, "Bot:Workers must be between 1 and 64.")
     .ValidateOnStart();
+
+builder.Services.AddSingleton<BotMetrics>();
+
+// Метрики, трейсы и логи; экспорт по OTLP в коллектор только при заданном адресе.
+var telemetry = builder.Configuration.GetSection(TelemetryOptions.SectionName).Get<TelemetryOptions>()
+    ?? new TelemetryOptions();
+builder.Logging.AddOpenTelemetry(o => o.IncludeFormattedMessage = true);
+var otel = builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("hireflow-bot"))
+    .WithMetrics(metrics => metrics.AddMeter("System.Net.Http", "System.Runtime", BotMetrics.MeterName))
+    .WithTracing(tracing => tracing
+        .AddSource(BotTelemetry.SourceName)
+        .AddHttpClientInstrumentation(o =>
+        {
+            o.FilterHttpRequestMessage = BotTelemetry.ShouldTrace;
+            o.RecordException = false;
+        })
+        .AddProcessor(new UrlTagsRemover()));
+if (!string.IsNullOrWhiteSpace(telemetry.OtlpEndpoint))
+{
+    // Экспортёр подключается после процессора UrlTagsRemover: порядок важен, иначе url.* уйдут в коллектор.
+    otel.UseOtlpExporter(OtlpExportProtocol.HttpProtobuf, new Uri(telemetry.OtlpEndpoint));
+    builder.Services.Configure<MetricReaderOptions>(reader =>
+        reader.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds =
+            (int)telemetry.ExportInterval.TotalMilliseconds);
+}
 
 builder.Services.AddHttpClient<IHireFlowApiClient, HireFlowApiClient>((sp, http) =>
 {
@@ -47,7 +79,8 @@ builder.Services.AddSingleton(sp =>
             using var scope = scopes.CreateScope();
             await scope.ServiceProvider.GetRequiredService<DialogHandler>().HandleAsync(message, ct);
         },
-        sp.GetRequiredService<ILogger<UpdateDispatcher>>());
+        sp.GetRequiredService<ILogger<UpdateDispatcher>>(),
+        sp.GetRequiredService<BotMetrics>());
 });
 builder.Services.AddHostedService<UpdateReceiverService>();
 builder.Services.AddHostedService<NotificationDispatcherService>();

@@ -490,3 +490,5 @@ PLAN.md
 .claude/
 
 CLAUDE.md
+# Результаты нагрузочного теста и учений (make load, make drill)
+load/results/

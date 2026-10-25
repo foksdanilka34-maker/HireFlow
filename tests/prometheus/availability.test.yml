@@ -1,0 +1,93 @@
+# Тесты алертов доступности и очереди уведомлений: promtool test rules (make rules-check).
+# Состояние алерта проверяется по ряду ALERTS (promql_expr_test): alert_rule_test сравнивает ещё и аннотации,
+# и правка текста summary или description ломала бы тесты.
+# Шаг рядов 15 с, как период сбора метрик и evaluation_interval в deploy/prometheus.yml.
+rule_files:
+  - ../../deploy/prometheus/rules/alerts.rules.yml
+
+evaluation_interval: 15s
+
+tests:
+  # Просрочка есть с первой секунды. До 10 минут алерт pending (его видно только в ALERTS), потом firing.
+  - name: NotificationsStuck pending 5 минут, firing после 10
+    interval: 15s
+    input_series:
+      - series: 'hireflow_notifications_overdue'
+        values: '1x100'
+    promql_expr_test:
+      - expr: ALERTS{alertname="NotificationsStuck", alertstate="firing"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: ALERTS{alertname="NotificationsStuck", alertstate="firing"}
+        eval_time: 11m
+        exp_samples:
+          - labels: 'ALERTS{alertname="NotificationsStuck", alertstate="firing", severity="warning"}'
+            value: 1
+      - expr: ALERTS{alertname="NotificationsStuck", alertstate="pending"}
+        eval_time: 5m
+        exp_samples:
+          - labels: 'ALERTS{alertname="NotificationsStuck", alertstate="pending", severity="warning"}'
+            value: 1
+
+  # Ряды бота есть 10 минут и пропадают. Алерт: окно absent 1 мин + for 4 мин, то есть около 5 минут после пропажи.
+  - name: BotDown срабатывает примерно через 5 минут после пропажи рядов
+    interval: 15s
+    input_series:
+      - series: 'dotnet_process_cpu_time_seconds_total{service_name="hireflow-bot", process_cpu_state="user"}'
+        values: '0+1x40 _x80'
+    promql_expr_test:
+      - expr: ALERTS{alertname="BotDown", alertstate="firing"}
+        eval_time: 12m
+        exp_samples: []
+      - expr: ALERTS{alertname="BotDown", alertstate="firing"}
+        eval_time: 16m
+        exp_samples:
+          - labels: 'ALERTS{alertname="BotDown", alertstate="firing", service_name="hireflow-bot", severity="critical"}'
+            value: 1
+
+  # То же для API: окно 1 мин + for 2 мин, то есть около 3 минут после пропажи.
+  - name: ApiDown срабатывает примерно через 3 минуты после пропажи рядов
+    interval: 15s
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service_name="hireflow-api", http_route="/api/vacancies", http_response_status_code="200"}'
+        values: '0+1x40 _x80'
+    promql_expr_test:
+      - expr: ALERTS{alertname="ApiDown", alertstate="firing"}
+        eval_time: 11m
+        exp_samples: []
+      - expr: ALERTS{alertname="ApiDown", alertstate="firing"}
+        eval_time: 14m
+        exp_samples:
+          - labels: 'ALERTS{alertname="ApiDown", alertstate="firing", service_name="hireflow-api", severity="critical"}'
+            value: 1
+
+  # Ряд счётчика начинается с 0 и в первый же интервал вырастает до 30 (так бот пишет его с Add(0) в конструкторе):
+  # первая пачка отброшенных сообщений видна в increase.
+  - name: BotMessagesDropped срабатывает на первой пачке после старта
+    interval: 15s
+    input_series:
+      - series: 'hireflow_bot_messages_dropped_total'
+        values: '0 30x40'
+    promql_expr_test:
+      - expr: ALERTS{alertname="BotMessagesDropped", alertstate="firing"}
+        eval_time: 2m
+        exp_samples:
+          - labels: 'ALERTS{alertname="BotMessagesDropped", alertstate="firing", severity="warning"}'
+            value: 1
+
+  # Gauge failed: 5 до рестарта API, пропуск, затем новый процесс сразу отдаёт 5 (без предшествующего 0): алерта нет.
+  # Потом значение растёт 5 -> 6: алерт срабатывает.
+  - name: NotificationsFailed молчит после рестарта и срабатывает при росте
+    interval: 1m
+    input_series:
+      - series: 'hireflow_notifications_failed'
+        values: '5x9 _x10 5x40 6x40'
+    promql_expr_test:
+      - expr: ALERTS{alertname="NotificationsFailed", alertstate="firing"}
+        eval_time: 30m
+        exp_samples: []
+      - expr: ALERTS{alertname="NotificationsFailed", alertstate="firing"}
+        eval_time: 70m
+        exp_samples:
+          - labels: 'ALERTS{alertname="NotificationsFailed", alertstate="firing", severity="warning"}'
+            value: 1

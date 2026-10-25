@@ -11,7 +11,8 @@ namespace HireFlow.Bot;
 public class NotificationDispatcherService(
     IServiceScopeFactory scopes,
     IOptions<BotOptions> options,
-    ILogger<NotificationDispatcherService> logger) : BackgroundService
+    ILogger<NotificationDispatcherService> logger,
+    BotMetrics? metrics = null) : BackgroundService
 {
     private const int ErrorMaxLength = 1000;
 
@@ -42,6 +43,7 @@ public class NotificationDispatcherService(
     // Одна итерация в собственном scope: клиенты API и Telegram живут только на время итерации.
     public async Task RunOnceAsync(CancellationToken ct)
     {
+        using var activity = BotTelemetry.Source.StartActivity("bot.notifications");
         using var scope = scopes.CreateScope();
         await RunOnceAsync(
             scope.ServiceProvider.GetRequiredService<IHireFlowApiClient>(),
@@ -74,6 +76,7 @@ public class NotificationDispatcherService(
                     error = ex.GetType().Name;
             }
 
+            metrics?.NotificationSent(ok: error is null);
             var status = error is null
                 ? await api.MarkNotificationSentAsync(notification.Id, ct)
                 : await api.MarkNotificationFailedAsync(notification.Id, error, ct);
