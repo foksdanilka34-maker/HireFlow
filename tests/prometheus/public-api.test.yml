@@ -1,0 +1,61 @@
+# Тесты правила PublicApiSlow (SLO публичного API): promtool test rules (make rules-check).
+# Ряды синтетические: шаг 1 мин. Состояние алерта проверяется по ряду ALERTS (promql_expr_test), как в slo.test.yml.
+rule_files:
+  - ../../deploy/prometheus/rules/alerts.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 2 успешных скрининга в минуту, 5% из них медленнее 1 с (в корзину le=1 попадают 95%): SLO 99% нарушено.
+  - name: PublicApiSlow срабатывает при 5 процентах медленных
+    interval: 1m
+    input_series:
+      - series: 'hireflow_public_api_request_duration_seconds_bucket{service_name="hireflow-api", client="acme", http_route="/v1/screenings", status_code="200", size="small", le="1"}'
+        values: '0+1.9x119'
+      - series: 'hireflow_public_api_request_duration_seconds_bucket{service_name="hireflow-api", client="acme", http_route="/v1/screenings", status_code="200", size="small", le="+Inf"}'
+        values: '0+2x119'
+      - series: 'hireflow_public_api_request_duration_seconds_count{service_name="hireflow-api", client="acme", http_route="/v1/screenings", status_code="200", size="small"}'
+        values: '0+2x119'
+    promql_expr_test:
+      - expr: ALERTS{alertname="PublicApiSlow", alertstate="firing"}
+        eval_time: 70m
+        exp_samples:
+          - labels: 'ALERTS{alertname="PublicApiSlow", alertstate="firing", severity="warning"}'
+            value: 1
+
+  # Трафик появляется на 63-й минуте: 5 запросов, все медленные (доля 0%), но их меньше 20. К 80-й минуте условие
+  # по доле держится дольше for (10m), так что алерта нет только из-за порога по числу запросов.
+  - name: PublicApiSlow не срабатывает при малом трафике
+    interval: 1m
+    input_series:
+      - series: 'hireflow_public_api_request_duration_seconds_bucket{service_name="hireflow-api", client="acme", http_route="/v1/screenings", status_code="200", size="small", le="1"}'
+        values: '0x119'
+      - series: 'hireflow_public_api_request_duration_seconds_bucket{service_name="hireflow-api", client="acme", http_route="/v1/screenings", status_code="200", size="small", le="+Inf"}'
+        values: '0x62 5x57'
+      - series: 'hireflow_public_api_request_duration_seconds_count{service_name="hireflow-api", client="acme", http_route="/v1/screenings", status_code="200", size="small"}'
+        values: '0x62 5x57'
+    promql_expr_test:
+      - expr: ALERTS{alertname="PublicApiSlow", alertstate="firing"}
+        eval_time: 80m
+        exp_samples: []
+
+  # Быстрые small-запросы (все быстрее 1 с), а все large медленные: SLO относится только к small, алерта нет.
+  - name: PublicApiSlow не срабатывает, если медленные только large
+    interval: 1m
+    input_series:
+      - series: 'hireflow_public_api_request_duration_seconds_bucket{service_name="hireflow-api", client="acme", http_route="/v1/screenings", status_code="200", size="small", le="1"}'
+        values: '0+2x119'
+      - series: 'hireflow_public_api_request_duration_seconds_bucket{service_name="hireflow-api", client="acme", http_route="/v1/screenings", status_code="200", size="small", le="+Inf"}'
+        values: '0+2x119'
+      - series: 'hireflow_public_api_request_duration_seconds_count{service_name="hireflow-api", client="acme", http_route="/v1/screenings", status_code="200", size="small"}'
+        values: '0+2x119'
+      - series: 'hireflow_public_api_request_duration_seconds_bucket{service_name="hireflow-api", client="acme", http_route="/v1/screenings", status_code="200", size="large", le="1"}'
+        values: '0x119'
+      - series: 'hireflow_public_api_request_duration_seconds_bucket{service_name="hireflow-api", client="acme", http_route="/v1/screenings", status_code="200", size="large", le="+Inf"}'
+        values: '0+2x119'
+      - series: 'hireflow_public_api_request_duration_seconds_count{service_name="hireflow-api", client="acme", http_route="/v1/screenings", status_code="200", size="large"}'
+        values: '0+2x119'
+    promql_expr_test:
+      - expr: ALERTS{alertname="PublicApiSlow", alertstate="firing"}
+        eval_time: 70m
+        exp_samples: []

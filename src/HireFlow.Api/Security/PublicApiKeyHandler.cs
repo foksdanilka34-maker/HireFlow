@@ -45,4 +45,12 @@ public class PublicApiKeyHandler(
             SchemeName);
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName));
     }
+
+    // Отвечает 401 с WWW-Authenticate: Bearer, чтобы клиент видел, какой ключ нужен.
+    protected override Task HandleChallengeAsync(AuthenticationProperties properties)
+    {
+        Response.StatusCode = StatusCodes.Status401Unauthorized;
+        Response.Headers.WWWAuthenticate = "Bearer";
+        return Task.CompletedTask;
+    }
 }

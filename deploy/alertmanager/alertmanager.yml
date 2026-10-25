@@ -13,9 +13,9 @@ route:
 # Без коллектора данных нет, а без API нет и его SLO-метрик: показываем причину, а не следствия.
 inhibit_rules:
   - source_matchers: ['alertname="TelemetryCollectorDown"']
-    target_matchers: ['alertname=~"ApiDown|BotDown|ApiErrorBudgetFastBurn|ApiErrorBudgetSlowBurn|ApiLatencyHigh|ScreeningSlow"']
+    target_matchers: ['alertname=~"ApiDown|BotDown|ApiErrorBudgetFastBurn|ApiErrorBudgetSlowBurn|ApiLatencyHigh|ScreeningSlow|PublicApiSlow"']
   - source_matchers: ['alertname="ApiDown"']
-    target_matchers: ['alertname=~"ApiErrorBudgetFastBurn|ApiErrorBudgetSlowBurn|ApiLatencyHigh|ScreeningSlow"']
+    target_matchers: ['alertname=~"ApiErrorBudgetFastBurn|ApiErrorBudgetSlowBurn|ApiLatencyHigh|ScreeningSlow|PublicApiSlow"']
 
 receivers:
   - name: none

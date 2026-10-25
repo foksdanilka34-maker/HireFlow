@@ -66,6 +66,23 @@ groups:
           description: 'Доля скринингов быстрее 60 с за час: {{ $value | humanizePercentage }}.'
           runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/ScreeningSlow.md
 
+      # SLO публичного API: 99% успешных скринингов с телом до 2 МБ быстрее 1 с; не меньше 20 таких запросов за час.
+      - alert: PublicApiSlow
+        expr: |
+          (
+            sum(rate(hireflow_public_api_request_duration_seconds_bucket{http_route="/v1/screenings", size="small", status_code="200", le="1"}[1h]))
+            /
+            sum(rate(hireflow_public_api_request_duration_seconds_count{http_route="/v1/screenings", size="small", status_code="200"}[1h]))
+          ) < 0.99
+          and sum(increase(hireflow_public_api_request_duration_seconds_count{http_route="/v1/screenings", size="small", status_code="200"}[1h])) >= 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Меньше 99% скринингов публичного API быстрее 1 с
+          description: 'Доля успешных скринингов с телом до 2 МБ быстрее 1 с за час: {{ $value | humanizePercentage }}.'
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/PublicApiSlow.md
+
   - name: notifications
     rules:
       # Снимок из БД раз в 30 с: pending-уведомления дольше 5 минут после send_after.

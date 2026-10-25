@@ -11,6 +11,7 @@
 | Доступность API | 99,5% ответов без 5xx (без `/health*`) | [ApiErrorBudgetFastBurn](ApiErrorBudgetFastBurn.md), [ApiErrorBudgetSlowBurn](ApiErrorBudgetSlowBurn.md) |
 | Задержка API | 95% запросов быстрее 1 с | [ApiLatencyHigh](ApiLatencyHigh.md) |
 | Скрининг | 99% откликов проходят скрининг быстрее 60 с | [ScreeningSlow](ScreeningSlow.md) |
+| Публичный API | 99% успешных `POST /v1/screenings` с телом до 2 МБ быстрее 1 с | [PublicApiSlow](PublicApiSlow.md) |
 | Доставка уведомлений | нет уведомлений, зависших дольше 10 мин | [NotificationsStuck](NotificationsStuck.md), [NotificationsFailed](NotificationsFailed.md) |
 
 ## Остальные алерты
@@ -23,8 +24,8 @@
 | [BotMessagesDropped](BotMessagesDropped.md) | warning | бот отбрасывает сообщения кандидатов |
 | [TelemetryCollectorDown](TelemetryCollectorDown.md) | critical | OTel Collector недоступен, телеметрии нет |
 
-Подавления: `TelemetryCollectorDown` гасит `ApiDown`, `BotDown` и SLO-алерты API (данных нет);
-`ApiDown` гасит SLO-алерты API.
+Подавления: `TelemetryCollectorDown` гасит `ApiDown`, `BotDown` и SLO-алерты API, включая `PublicApiSlow`
+(данных нет); `ApiDown` гасит SLO-алерты API и `PublicApiSlow`.
 
 ## Бюджет ошибок
 

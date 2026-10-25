@@ -72,7 +72,8 @@ if (!string.IsNullOrWhiteSpace(hosting.DataProtectionKeysPath))
         .PersistKeysToFileSystem(new DirectoryInfo(hosting.DataProtectionKeysPath));
 }
 
-builder.Services.AddOpenApi();
+// internal — все маршруты, только в Development; public — только /v1, отдаётся всегда (/v1/openapi.json).
+builder.Services.AddOpenApi("internal");
 builder.Services.AddValidation();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<AppExceptionHandler>();
@@ -85,6 +86,7 @@ builder.Services.Configure<BotApiKeyOptions>(builder.Configuration.GetSection(Bo
 builder.Services.Configure<PublicApiOptions>(builder.Configuration.GetSection(PublicApiOptions.SectionName));
 var publicApi = builder.Configuration.GetSection(PublicApiOptions.SectionName).Get<PublicApiOptions>()
     ?? new PublicApiOptions();
+builder.Services.AddPublicApiDocs(publicApi);
 var recruiterAuth = builder.Configuration.GetSection(RecruiterAuthOptions.SectionName).Get<RecruiterAuthOptions>()
     ?? new RecruiterAuthOptions();
 
@@ -226,7 +228,8 @@ if (args is ["migrate"])
 if (hosting.TrustForwardedHeaders)
     app.UseForwardedHeaders();
 
-
+// До обработчика ошибок, чтобы видеть итоговый код ответа /v1, в том числе 401 и 429.
+app.UseMiddleware<PublicApiMetricsMiddleware>();
 app.UseExceptionHandler();
 app.UseCors();
 app.UseAuthentication();
@@ -250,6 +253,7 @@ app.MapJobApplicationEndpoints();
 app.MapNotificationEndpoints();
 app.MapBotSessionEndpoints();
 app.MapPublicApiEndpoints();
+app.MapPublicApiDocs();
 
 await app.RunAsync();
 return 0;

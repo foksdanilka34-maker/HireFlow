@@ -14,11 +14,15 @@ public class HireFlowMetrics
     // Границы корзин скрининга в секундах: 60 — порог SLO (99% откликов быстрее минуты).
     private static readonly double[] ScreeningDurationBuckets = [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120];
 
+    // Границы корзин запросов публичного API в секундах: 1 — порог SLO (99% небольших скринингов быстрее 1 с).
+    private static readonly double[] PublicApiDurationBuckets = [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];
+
     private readonly Counter<long> _applicationsCreated;
     private readonly Histogram<double> _screeningDuration;
     private readonly Counter<long> _decisions;
     private readonly Counter<long> _uploadsLimited;
     private readonly Counter<long> _logins;
+    private readonly Histogram<double> _publicApiDuration;
 
     // Создаёт meter через фабрику DI и регистрирует инструменты.
     public HireFlowMetrics(IMeterFactory meterFactory)
@@ -30,6 +34,8 @@ public class HireFlowMetrics
         _decisions = Meter.CreateCounter<long>("hireflow.applications.decisions", description: "Решения рекрутера");
         _uploadsLimited = Meter.CreateCounter<long>("hireflow.resume_uploads.limited", description: "Отказы по лимиту загрузок");
         _logins = Meter.CreateCounter<long>("hireflow.recruiter.logins", description: "Попытки входа рекрутера");
+        _publicApiDuration = Meter.CreateHistogram("hireflow.public_api.request.duration", "s", "Запросы публичного API",
+            tags: null, advice: new InstrumentAdvice<double> { HistogramBucketBoundaries = PublicApiDurationBuckets });
     }
 
     public Meter Meter { get; }
@@ -53,6 +59,14 @@ public class HireFlowMetrics
     // Учитывает попытку входа рекрутера: success, failure или limited.
     public void RecruiterLogin(string result) =>
         _logins.Add(1, new KeyValuePair<string, object?>("result", result));
+
+    // Записывает длительность запроса публичного API: клиент, шаблон маршрута, код ответа и размерный класс тела.
+    public void PublicApiRequest(string client, string route, int statusCode, string size, TimeSpan duration) =>
+        _publicApiDuration.Record(duration.TotalSeconds,
+            new KeyValuePair<string, object?>("client", client),
+            new KeyValuePair<string, object?>("http_route", route),
+            new KeyValuePair<string, object?>("status_code", statusCode),
+            new KeyValuePair<string, object?>("size", size));
 
     // Переводит значение перечисления в snake_case, как в API и БД.
     public static string ToTag<T>(T value) where T : struct, Enum =>
