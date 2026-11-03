@@ -1,4 +1,6 @@
 using HireFlow.Application.Common;
+using HireFlow.Application.Ai;
+using HireFlow.Domain.Ai;
 using HireFlow.Application.Notifications;
 using HireFlow.Application.Resumes;
 using HireFlow.Domain;
@@ -9,6 +11,7 @@ using HireFlow.Domain.Screening;
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 
 namespace HireFlow.Application.JobApplications;
 
@@ -17,7 +20,10 @@ public class JobApplicationService(
     IResumeReader resumeReader,
     IFileStorage fileStorage,
     IOptions<NotificationOptions> notificationOptions,
-    HireFlowMetrics metrics)
+    IOptions<AiReviewOptions> aiOptions,
+    IOptions<QuestionOptions> questionOptions,
+    HireFlowMetrics metrics,
+    ILogger<JobApplicationService> logger)
     : IJobApplicationService
 {
     private readonly TimeSpan _rejectionDelay = notificationOptions.Value.RejectionDelay;
@@ -56,12 +62,31 @@ public class JobApplicationService(
             fileKey,
             Path.GetFileName(request.FileName),
             resume.Hash,
-            resume.Text);
+            resume.Text,
+            vacancy.GetQuestions());
 
-        application.ApplyScreening(screening, _rejectionDelay);
+        application.ApplyScreening(screening, _rejectionDelay, aiOptions.Value.Enabled, TimeSpan.FromDays(Math.Clamp(questionOptions.Value.ResponseDays, 1, 365)));
 
         db.JobApplications.Add(application);
-        await db.SaveChangesAsync(ct);
+        if (application.Status == ApplicationStatus.AiReview)
+            db.AiReviewJobs.Add(new AiReviewJob(application, vacancy.Requirements));
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is ConflictException or DbUpdateException)
+        {
+            // При гарантированном откате записи файл больше не нужен, даже если запрос отменён.
+            try
+            {
+                await fileStorage.DeleteAsync(fileKey, CancellationToken.None);
+            }
+            catch (Exception cleanupError)
+            {
+                logger.LogError(cleanupError, "Failed to delete resume after application save failed.");
+            }
+            throw;
+        }
         metrics.ScreeningDuration(screeningDuration);
         metrics.ApplicationCreated(screening.Verdict);
 
@@ -97,6 +122,7 @@ public class JobApplicationService(
         var application = await db.JobApplications
             .AsNoTracking()
             .Include(a => a.History)
+            .Include(a => a.Questions)
             .FirstOrDefaultAsync(a => a.Id == id, ct)
             ?? throw new NotFoundException($"Application {id} not found.");
 
@@ -129,6 +155,7 @@ public class JobApplicationService(
         var application = await db.JobApplications
             .Include(a => a.History)
             .Include(a => a.Notifications)
+            .Include(a => a.Questions)
             .FirstOrDefaultAsync(a => a.Id == id, ct)
             ?? throw new NotFoundException($"Application {id} not found.");
 

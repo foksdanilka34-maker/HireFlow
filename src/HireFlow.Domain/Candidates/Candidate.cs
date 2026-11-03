@@ -22,7 +22,7 @@ public class Candidate
         TelegramId = telegramId;
         Name = name.Trim();
         Phone = NormalizePhone(phone);
-        CreatedAt = DateTime.UtcNow;
+        CreatedAt = UtcNow();
         UpdatedAt = CreatedAt;
     }
 
@@ -31,7 +31,14 @@ public class Candidate
     {
         Name = name.Trim();
         Phone = NormalizePhone(phone);
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = UtcNow();
+    }
+
+    // Приводит время к точности PostgreSQL, чтобы API возвращал сохранённое значение.
+    private static DateTime UtcNow()
+    {
+        var now = DateTime.UtcNow;
+        return new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
     }
 
     // Приводит номер к формату E.164, невалидный номер — DomainException.

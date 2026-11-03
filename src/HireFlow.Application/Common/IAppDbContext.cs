@@ -1,4 +1,5 @@
 using HireFlow.Domain.ApiClients;
+using HireFlow.Domain.Ai;
 using HireFlow.Domain.BotSessions;
 using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
@@ -21,6 +22,7 @@ public interface IAppDbContext
     DbSet<Recruiter> Recruiters { get; }
     DbSet<ApiClient> ApiClients { get; }
     DbSet<ApiUsage> ApiUsages { get; }
+    DbSet<AiReviewJob> AiReviewJobs { get; }
 
     // Сохраняет все изменения в базу одной транзакцией.
     Task<int> SaveChangesAsync(CancellationToken ct = default);

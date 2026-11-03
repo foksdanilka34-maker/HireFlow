@@ -5,6 +5,9 @@ public interface IFileStorage
     // Сохраняет файл и возвращает его ключ в хранилище.
     Task<string> SaveAsync(byte[] content, string extension, CancellationToken ct);
 
+    // Удаляет сохранённый файл по ключу, если он существует.
+    Task DeleteAsync(string key, CancellationToken ct);
+
     // Открывает файл по ключу на чтение; нет файла — null.
     Task<Stream?> OpenReadAsync(string key, CancellationToken ct);
 }

@@ -22,6 +22,7 @@ public class JobApplicationConfiguration : IEntityTypeConfiguration<JobApplicati
 
         builder.HasOne<Vacancy>().WithMany().HasForeignKey(a => a.VacancyId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Candidate>().WithMany().HasForeignKey(a => a.CandidateId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(a => new { a.CandidateId, a.VacancyId }).IsUnique();
 
         builder.Property(a => a.ResumeFileKey).HasMaxLength(JobApplication.FileKeyMaxLength);
         builder.Property(a => a.ResumeFileName).HasMaxLength(JobApplication.FileNameMaxLength);
@@ -30,6 +31,9 @@ public class JobApplicationConfiguration : IEntityTypeConfiguration<JobApplicati
         builder.Property(a => a.Status)
             .HasConversion(new SnakeCaseEnumConverter<ApplicationStatus>())
             .HasMaxLength(30);
+
+        builder.OwnsOne(a => a.AiReview, review => review.ToJson("ai_review"));
+        builder.OwnsOne(a => a.AnswersReview, review => review.ToJson("answers_review"));
 
         builder.ComplexProperty(a => a.Screening, screening =>
         {
@@ -53,5 +57,6 @@ public class JobApplicationConfiguration : IEntityTypeConfiguration<JobApplicati
             .WithOne()
             .HasForeignKey(n => n.ApplicationId)
             .OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(a => a.Questions).WithOne().HasForeignKey(q => q.ApplicationId).OnDelete(DeleteBehavior.Cascade);
     }
 }

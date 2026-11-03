@@ -68,6 +68,7 @@ public class CandidateService(IAppDbContext db) : ICandidateService
     private static CandidateStatus ToCandidateStatus(ApplicationStatus status, bool rejectionSent) => status switch
     {
         ApplicationStatus.Invited => CandidateStatus.Invited,
+        ApplicationStatus.Expired => CandidateStatus.Expired,
         ApplicationStatus.Rejected or ApplicationStatus.AutoRejected when rejectionSent => CandidateStatus.Rejected,
         _ => CandidateStatus.InReview,
     };

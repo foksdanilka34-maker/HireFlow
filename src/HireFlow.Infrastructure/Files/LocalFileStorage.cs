@@ -18,6 +18,17 @@ public class LocalFileStorage(string rootPath) : IFileStorage
         return key;
     }
 
+    // Удаляет файл внутри хранилища; ключ за его пределами не принимается.
+    public Task DeleteAsync(string key, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var path = Path.GetFullPath(Path.Combine(_root, key));
+        if (!path.StartsWith(_root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            throw new ArgumentException("Invalid storage key.", nameof(key));
+        File.Delete(path);
+        return Task.CompletedTask;
+    }
+
     // Открывает файл на чтение; нет файла или ключ ведёт за пределы папки хранилища — null.
     public Task<Stream?> OpenReadAsync(string key, CancellationToken ct)
     {

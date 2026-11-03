@@ -90,6 +90,27 @@ public partial class DialogHandler(
             case "/status":
                 await ShowStatusAsync(turn, ct);
                 return;
+            case "/questions":
+                var current = await api.GetPendingQuestionAsync(turn.Message.UserId, ct);
+                if (current.Status == ApiStatus.NotFound) turn.Replies.Add("Сейчас нет вопросов, ожидающих ответа.");
+                else if (current.IsOk && current.Value is not null) turn.Replies.Add(BotTexts.Question(current.Value));
+                else throw new ServiceUnavailableException();
+                return;
+        }
+
+        if (command is null && !string.IsNullOrEmpty(text) && turn.Message.Document is null)
+        {
+            var pending = await api.GetPendingQuestionAsync(turn.Message.UserId, ct);
+            if (pending.IsOk && pending.Value is { } question)
+            {
+                var answered = await api.AnswerQuestionAsync(turn.Message.UserId, question.ApplicationId, question.Position, text, ct);
+                if (answered.Status == ApiStatus.Conflict) turn.Replies.Add("Вопрос изменился или срок ответа истёк. Напишите /questions.");
+                else if (answered.Status == ApiStatus.BadRequest) turn.Replies.Add("Ответ должен содержать от 1 до 4000 символов.");
+                else if (!answered.IsOk || answered.Value is null) throw new ServiceUnavailableException();
+                else turn.Replies.Add(answered.Value.Next is { } next ? BotTexts.Question(next) : "Спасибо, ответы сохранены и будут переданы рекрутеру.");
+                return;
+            }
+            if (pending.Status != ApiStatus.NotFound) throw new ServiceUnavailableException();
         }
 
         turn.Save = true;

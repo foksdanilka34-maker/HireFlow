@@ -19,6 +19,7 @@ public record VacancyRequest
 
     [Range(0, 3650)]
     public int FreezePeriodDays { get; init; } = Vacancy.DefaultFreezePeriodDays;
+    public List<VacancyQuestion> Questions { get; init; } = [];
 }
 
 public record VacancyResponse(
@@ -30,9 +31,10 @@ public record VacancyResponse(
     VacancyRequirements Requirements,
     int FreezePeriodDays,
     DateTime CreatedAt,
-    DateTime UpdatedAt)
+    DateTime UpdatedAt,
+    List<VacancyQuestion> Questions)
 {
     // Собирает ответ API из сущности.
     public static VacancyResponse From(Vacancy v) => new(
-        v.Id, v.Title, v.Direction, v.Description, v.Status, v.Requirements, v.FreezePeriodDays, v.CreatedAt, v.UpdatedAt);
+        v.Id, v.Title, v.Direction, v.Description, v.Status, v.Requirements, v.FreezePeriodDays, v.CreatedAt, v.UpdatedAt, v.GetQuestions());
 }

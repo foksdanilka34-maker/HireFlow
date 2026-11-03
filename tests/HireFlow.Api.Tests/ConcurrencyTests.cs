@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Net;
 using HireFlow.Api.Errors;
 using HireFlow.Api.Tests.Infrastructure;
 using HireFlow.Application.Common;
@@ -15,6 +16,44 @@ namespace HireFlow.Api.Tests;
 // Оптимистичная блокировка на системной колонке xmin: проверяется на настоящем PostgreSQL двумя независимыми DbContext.
 public class ConcurrencyTests(ApiAppFixture app) : ApiTestBase(app)
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ConcurrentApplications_OneStoredAndNoOrphanedResumes(bool existingCandidate)
+    {
+        var skill = Unique("s");
+        var vacancy = await CreateVacancyAsync([skill]);
+        var telegramId = NewTelegramId();
+        if (existingCandidate)
+            await CreateCandidateAsync(telegramId);
+        var resume = ResumeWith(skill);
+        var filesBefore = StoredFileCount();
+
+        var requests = Enumerable.Range(0, 12).Select(_ => Client.PostAsync("/applications",
+            ResumeForm(resume, "resume.pdf", 5, ("telegramId", telegramId.ToString()),
+                ("vacancyId", vacancy.Id.ToString()), ("name", "Тест Кандидат"), ("phone", "79991234567"))));
+        var responses = await Task.WhenAll(requests);
+
+        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Created);
+        Assert.All(responses, r => Assert.Contains(r.StatusCode, new[] { HttpStatusCode.Created, HttpStatusCode.Conflict }));
+        Assert.Equal(1, await CountApplicationsAsync(vacancy.Id));
+        Assert.Equal(filesBefore + 1, StoredFileCount());
+    }
+
+    [Fact]
+    public async Task DatabaseRejectsDuplicateCandidateAndVacancy()
+    {
+        var application = await CreateReviewApplicationAsync();
+        await using var scope = App.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var duplicate = new JobApplication(application.VacancyId, application.CandidateId, 5,
+            "resumes/test.pdf", "test.pdf", new string('a', 64), "test");
+        duplicate.ApplyScreening(application.Screening, TimeSpan.FromHours(4));
+        db.JobApplications.Add(duplicate);
+
+        await Assert.ThrowsAsync<ConflictException>(() => db.SaveChangesAsync());
+    }
+
     // Загружает отклик вместе с историей и уведомлениями в отдельном scope, как это делает сервис.
     private static Task<JobApplication> LoadApplicationAsync(AppDbContext db, Guid id) =>
         db.JobApplications.Include(a => a.History).Include(a => a.Notifications).SingleAsync(a => a.Id == id);

@@ -105,6 +105,27 @@ groups:
           description: 'Новых failed-уведомлений за час: {{ $value | printf "%.0f" }}.'
           runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/NotificationsFailed.md
 
+  - name: ai_review
+    rules:
+      - alert: AiReviewQueueStuck
+        expr: max(hireflow_ai_jobs_overdue) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Очередь проверки ИИ не опустошается
+          description: 'Задач проверки ИИ в очереди: {{ $value }}.'
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/AiReviewQueueStuck.md
+
+      - alert: AiReviewFailed
+        expr: max(delta(hireflow_ai_jobs_failed[1h])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Проверка ИИ завершилась ошибкой
+          description: 'Новых задач с ошибкой за час: {{ $value | printf "%.0f" }}.'
+          runbook_url: https://github.com/foksdanilka34-maker/HireFlow/blob/main/docs/runbooks/AiReviewFailed.md
+
   - name: availability
     rules:
       # Healthcheck Docker ходит в /health/ready каждые 15 с, поэтому у живого API ряды есть всегда.

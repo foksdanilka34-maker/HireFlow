@@ -30,6 +30,7 @@ public enum CandidateStatus
     InReview,
     Invited,
     Rejected,
+    Expired,
 }
 
 public record CandidateApplicationResponse(Guid Id, Guid VacancyId, string VacancyTitle, CandidateStatus Status, DateTime CreatedAt);

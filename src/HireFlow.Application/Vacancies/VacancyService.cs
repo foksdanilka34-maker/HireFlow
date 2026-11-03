@@ -28,7 +28,7 @@ public class VacancyService(IAppDbContext db) : IVacancyService
     public async Task<VacancyResponse> CreateAsync(VacancyRequest request, CancellationToken ct)
     {
         var vacancy = new Vacancy(
-            request.Title, request.Direction, request.Description, request.Requirements, request.FreezePeriodDays);
+            request.Title, request.Direction, request.Description, request.Requirements, request.FreezePeriodDays, request.Questions);
 
         db.Vacancies.Add(vacancy);
         await db.SaveChangesAsync(ct);
@@ -40,7 +40,7 @@ public class VacancyService(IAppDbContext db) : IVacancyService
     {
         var vacancy = await FindAsync(id, ct);
         vacancy.Update(
-            request.Title, request.Direction, request.Description, request.Requirements, request.FreezePeriodDays);
+            request.Title, request.Direction, request.Description, request.Requirements, request.FreezePeriodDays, request.Questions);
 
         await db.SaveChangesAsync(ct);
         return VacancyResponse.From(vacancy);

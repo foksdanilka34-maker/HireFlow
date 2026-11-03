@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using HireFlow.Application.Common;
+using HireFlow.Domain.Ai;
 using HireFlow.Domain.JobApplications;
 using HireFlow.Domain.Notifications;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +28,9 @@ public class MetricsSnapshotService : BackgroundService
             description: "Уведомления pending, просроченные больше чем на 5 минут");
         metrics.Meter.CreateObservableGauge("hireflow.notifications.failed", () => Observe(s => s.Failed),
             description: "Уведомления в статусе failed");
+        metrics.Meter.CreateObservableGauge("hireflow.ai.jobs.pending", () => Observe(s => s.AiPending), description: "Задачи ИИ в очереди");
+        metrics.Meter.CreateObservableGauge("hireflow.ai.jobs.overdue", () => Observe(s => s.AiOverdue), description: "Задачи ИИ ожидают больше пяти минут");
+        metrics.Meter.CreateObservableGauge("hireflow.ai.jobs.failed", () => Observe(s => s.AiFailed), description: "Задачи ИИ с ошибкой");
     }
 
     // Обновляет снимок по таймеру; сбой обновления пишет в лог тип исключения и оставляет прежний снимок.
@@ -68,7 +72,10 @@ public class MetricsSnapshotService : BackgroundService
             .CountAsync(n => n.Status == NotificationStatus.Pending && n.SendAfter < overdueBefore, ct);
         var failed = await db.Notifications.CountAsync(n => n.Status == NotificationStatus.Failed, ct);
 
-        _snapshot = new Snapshot(byStatus, overdue, failed);
+        var aiPending = await db.AiReviewJobs.CountAsync(j => j.Status == AiReviewJobStatus.Pending, ct);
+        var aiOverdue = await db.AiReviewJobs.CountAsync(j => j.Status == AiReviewJobStatus.Pending && j.AvailableAt < overdueBefore, ct);
+        var aiFailed = await db.AiReviewJobs.CountAsync(j => j.Status == AiReviewJobStatus.Failed, ct);
+        _snapshot = new Snapshot(byStatus, overdue, failed, aiPending, aiOverdue, aiFailed);
     }
 
     // Отдаёт число откликов по каждому статусу из снимка; снимка ещё нет — ничего.
@@ -93,5 +100,5 @@ public class MetricsSnapshotService : BackgroundService
         }
     }
 
-    private sealed record Snapshot(IReadOnlyDictionary<ApplicationStatus, int> ByStatus, int Overdue, int Failed);
+    private sealed record Snapshot(IReadOnlyDictionary<ApplicationStatus, int> ByStatus, int Overdue, int Failed, int AiPending, int AiOverdue, int AiFailed);
 }

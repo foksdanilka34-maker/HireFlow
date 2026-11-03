@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Hosting;
+using HireFlow.Api.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -38,7 +39,13 @@ public class ApiFactory(string connectionString, string storagePath, int loginAt
         foreach (var (key, value) in extraSettings ?? new Dictionary<string, string>())
             builder.UseSetting(key, value);
 
-        if (configureServices is not null)
-            builder.ConfigureTestServices(configureServices);
+        builder.ConfigureTestServices(services =>
+        {
+            // Проверки очереди запускают обработчик явно; остальные тесты не создают фоновых подключений.
+            var worker = services.SingleOrDefault(d => d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService)
+                && d.ImplementationType == typeof(AiReviewWorker));
+            if (worker is not null) services.Remove(worker);
+            configureServices?.Invoke(services);
+        });
     }
 }

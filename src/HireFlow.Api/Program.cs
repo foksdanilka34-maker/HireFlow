@@ -16,6 +16,9 @@ using HireFlow.Api.Recruiters;
 using HireFlow.Api.Security;
 using HireFlow.Api.Vacancies;
 using HireFlow.Application;
+using HireFlow.Application.Ai;
+using HireFlow.Application.JobApplications;
+using HireFlow.Infrastructure.Ai;
 using HireFlow.Application.Common;
 using HireFlow.Application.Resumes;
 using HireFlow.Application.Notifications;
@@ -81,6 +84,13 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower)));
 
 builder.Services.Configure<NotificationOptions>(builder.Configuration.GetSection(NotificationOptions.SectionName));
+builder.Services.Configure<AiReviewOptions>(builder.Configuration.GetSection(AiReviewOptions.SectionName));
+builder.Services.Configure<QuestionOptions>(builder.Configuration.GetSection(QuestionOptions.SectionName));
+builder.Services.AddHttpClient<IAiReviewer, LlamaAiReviewer>(client => client.Timeout = Timeout.InfiniteTimeSpan);
+builder.Services.AddHttpClient<IVacancyAiAssistant, LlamaVacancyAiAssistant>(client => client.Timeout = Timeout.InfiniteTimeSpan);
+builder.Services.AddScoped<AiReviewProcessor>();
+builder.Services.AddHostedService<AiReviewWorker>();
+builder.Services.AddHostedService<QuestionExpiryWorker>();
 builder.Services.Configure<ResumeUploadOptions>(builder.Configuration.GetSection(ResumeUploadOptions.SectionName));
 builder.Services.Configure<BotApiKeyOptions>(builder.Configuration.GetSection(BotApiKeyOptions.SectionName));
 builder.Services.Configure<PublicApiOptions>(builder.Configuration.GetSection(PublicApiOptions.SectionName));
@@ -193,6 +203,7 @@ var otel = builder.Services.AddOpenTelemetry()
         "Microsoft.AspNetCore.Hosting", "Microsoft.AspNetCore.Server.Kestrel", "System.Runtime", "Npgsql",
         HireFlowMetrics.MeterName))
     .WithTracing(tracing => tracing
+        .AddSource(AiReviewTracing.SourceName)
         .AddAspNetCoreInstrumentation(o =>
         {
             o.Filter = context => !context.Request.Path.StartsWithSegments("/health");
@@ -250,6 +261,7 @@ app.MapAuthEndpoints();
 app.MapVacancyEndpoints();
 app.MapCandidateEndpoints();
 app.MapJobApplicationEndpoints();
+app.MapQuestionnaireEndpoints();
 app.MapNotificationEndpoints();
 app.MapBotSessionEndpoints();
 app.MapPublicApiEndpoints();

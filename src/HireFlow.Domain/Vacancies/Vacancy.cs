@@ -12,6 +12,7 @@ public class Vacancy
     public string? Description { get; private set; }
     public VacancyStatus Status { get; private set; }
     public VacancyRequirements Requirements { get; private set; } = null!;
+    public string? QuestionsJson { get; private set; }
     public int FreezePeriodDays { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
@@ -20,12 +21,13 @@ public class Vacancy
     private Vacancy() { }
 
     // Создаёт открытую вакансию. Id выдаст база при сохранении.
-    public Vacancy(string title, string direction, string? description, VacancyRequirements requirements, int freezePeriodDays)
+    public Vacancy(string title, string direction, string? description, VacancyRequirements requirements, int freezePeriodDays, IReadOnlyList<VacancyQuestion>? questions = null)
     {
         Title = title.Trim();
         Direction = direction.Trim();
         Description = description;
         Requirements = requirements;
+        SetQuestions(questions);
         FreezePeriodDays = freezePeriodDays;
         Status = VacancyStatus.Open;
         CreatedAt = DateTime.UtcNow;
@@ -33,16 +35,28 @@ public class Vacancy
     }
 
     // Меняет содержимое вакансии. Вакансию в архиве менять нельзя.
-    public void Update(string title, string direction, string? description, VacancyRequirements requirements, int freezePeriodDays)
+    public void Update(string title, string direction, string? description, VacancyRequirements requirements, int freezePeriodDays, IReadOnlyList<VacancyQuestion>? questions = null)
     {
         EnsureNotArchived();
         Title = title.Trim();
         Direction = direction.Trim();
         Description = description;
         Requirements = requirements;
+        if (questions is not null) SetQuestions(questions);
         FreezePeriodDays = freezePeriodDays;
         UpdatedAt = DateTime.UtcNow;
     }
+
+    // Сохраняет упорядоченные вопросы; уже созданные отклики используют собственный снимок.
+    private void SetQuestions(IReadOnlyList<VacancyQuestion>? questions)
+    {
+        if (questions is { Count: > 10 } || questions?.Any(q => string.IsNullOrWhiteSpace(q.Text) || q.Text.Length > 500 || q.Criterion?.Length > 1000) == true)
+            throw new DomainException("Invalid vacancy questions.");
+        QuestionsJson = System.Text.Json.JsonSerializer.Serialize(questions ?? []);
+    }
+
+    public List<VacancyQuestion> GetQuestions() => string.IsNullOrEmpty(QuestionsJson)
+        ? [] : System.Text.Json.JsonSerializer.Deserialize<List<VacancyQuestion>>(QuestionsJson) ?? [];
 
     // Открывает приём откликов.
     public void Open() => ChangeStatus(VacancyStatus.Open);

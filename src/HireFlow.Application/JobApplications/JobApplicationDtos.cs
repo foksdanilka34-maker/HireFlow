@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using HireFlow.Application.Resumes;
+using HireFlow.Domain.Ai;
 using HireFlow.Domain.Candidates;
 using HireFlow.Domain.JobApplications;
 using HireFlow.Domain.Screening;
@@ -50,6 +51,8 @@ public record StatusChangeResponse(
     DateTime ChangedAt,
     string? RecruiterLogin);
 
+public record ApplicationQuestionResponse(int Position, string Text, string? Criterion, string? Answer);
+
 public record ApplicationResponse(
     Guid Id,
     Guid VacancyId,
@@ -63,9 +66,15 @@ public record ApplicationResponse(
     ResumeFormat ResumeFormat,
     bool RejectionSent,
     ScreeningResult Screening,
+    AiReviewResult? AiReview,
+    bool AiReviewUnavailable,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    List<StatusChangeResponse> History)
+    List<StatusChangeResponse> History,
+    List<ApplicationQuestionResponse>? Questions = null,
+    AiReviewResult? AnswersReview = null,
+    bool AnswersReviewUnavailable = false,
+    DateTime? QuestionsDeadline = null)
 {
     // Собирает ответ API из отклика, вакансии, кандидата и логинов рекрутеров из истории.
     public static ApplicationResponse From(
@@ -73,6 +82,7 @@ public record ApplicationResponse(
         bool rejectionSent) => new(
         a.Id, a.VacancyId, vacancy.Title, a.CandidateId, candidate.Name, candidate.Phone,
         a.Status, a.YearsOfExperience, a.ResumeFileName, FormatOf(a.ResumeFileKey), rejectionSent, a.Screening,
+        a.AiReview, a.AiReviewUnavailable,
         a.CreatedAt, a.UpdatedAt,
         a.History
             .OrderBy(h => h.ChangedAt)
@@ -80,7 +90,9 @@ public record ApplicationResponse(
             .Select(h => new StatusChangeResponse(
                 h.FromStatus, h.ToStatus, h.ChangedBy, h.Reason, h.ChangedAt,
                 h.RecruiterId is { } rid ? recruiterLogins.GetValueOrDefault(rid) : null))
-            .ToList());
+            .ToList(),
+        a.Questions.OrderBy(q => q.Position).Select(q => new ApplicationQuestionResponse(q.Position, q.Text, q.Criterion, q.Answer)).ToList(),
+        a.AnswersReview, a.AnswersReviewUnavailable, a.QuestionsDeadline);
 
     // Формат резюме по расширению ключа файла (resumes/{guid}.pdf или .docx).
     public static ResumeFormat FormatOf(string resumeFileKey) =>

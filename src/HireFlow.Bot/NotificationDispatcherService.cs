@@ -66,7 +66,7 @@ public class NotificationDispatcherService(
             string? error = null;
             try
             {
-                var text = BotTexts.Notification(notification.Type, notification.VacancyTitle);
+                var text = BotTexts.Notification(notification.Type, notification.VacancyTitle, notification.Question);
                 await chat.SendTextAsync(notification.TelegramId, text, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)

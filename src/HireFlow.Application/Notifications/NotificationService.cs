@@ -1,5 +1,6 @@
 using HireFlow.Application.Common;
 using HireFlow.Domain.Notifications;
+using HireFlow.Domain.JobApplications;
 using Microsoft.EntityFrameworkCore;
 
 namespace HireFlow.Application.Notifications;
@@ -18,8 +19,13 @@ public class NotificationService(IAppDbContext db) : INotificationService
             join c in db.Candidates on a.CandidateId equals c.Id
             join v in db.Vacancies on a.VacancyId equals v.Id
             where n.Status == NotificationStatus.Pending && n.SendAfter <= now
+                && (n.Type != NotificationType.QuestionsReady ||
+                    (a.Status == ApplicationStatus.AwaitingQuestions && a.QuestionsDeadline > now &&
+                     db.JobApplications.Where(other => other.CandidateId == a.CandidateId && other.Status == ApplicationStatus.AwaitingQuestions && other.QuestionsDeadline > now)
+                       .OrderBy(other => other.CreatedAt).ThenBy(other => other.Id).Select(other => other.Id).FirstOrDefault() == a.Id))
             orderby n.SendAfter
-            select new DueNotificationResponse(n.Id, c.TelegramId, n.Type, v.Title);
+            select new DueNotificationResponse(n.Id, c.TelegramId, n.Type, v.Title, a.Id,
+                n.Type == NotificationType.QuestionsReady ? a.Questions.Where(q => q.Answer == null).OrderBy(q => q.Position).Select(q => q.Text).FirstOrDefault() : null);
 
         return await query.Take(BatchSize).ToListAsync(ct);
     }

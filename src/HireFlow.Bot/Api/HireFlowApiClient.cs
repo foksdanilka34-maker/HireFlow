@@ -74,6 +74,13 @@ public class HireFlowApiClient(HttpClient http, ILogger<HireFlowApiClient> logge
         SendAsync<List<DueNotificationDto>>("get_due_notifications",
             () => new HttpRequestMessage(HttpMethod.Get, "internal/notifications/due"), ct);
 
+    public Task<ApiResult<PendingQuestionDto>> GetPendingQuestionAsync(long telegramId, CancellationToken ct) =>
+        SendAsync<PendingQuestionDto>("get_pending_question", () => new HttpRequestMessage(HttpMethod.Get, $"internal/candidates/{telegramId}/questions"), ct);
+
+    public Task<ApiResult<AnswerQuestionDto>> AnswerQuestionAsync(long telegramId, Guid applicationId, int position, string answer, CancellationToken ct) =>
+        SendAsync<AnswerQuestionDto>("answer_question", () => new HttpRequestMessage(HttpMethod.Post, $"internal/candidates/{telegramId}/questions/{applicationId}")
+        { Content = JsonContent.Create(new { position, answer }, options: Json) }, ct);
+
     public Task<ApiStatus> MarkNotificationSentAsync(Guid id, CancellationToken ct) =>
         SendNoContentAsync("notification_sent",
             () => new HttpRequestMessage(HttpMethod.Post, $"internal/notifications/{id}/sent"), ct);

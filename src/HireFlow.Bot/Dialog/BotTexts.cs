@@ -7,7 +7,7 @@ public static class BotTexts
     public const string About =
         "Я помогаю найти вакансию и откликнуться на неё. Пришлите резюме в PDF или DOCX — я подберу подходящие " +
         "вакансии, вы выберете номер и откликнетесь. Результат отклика пришлю сюда.\n" +
-        "Команды: /start — начать заново, /help — справка, /status — ваши отклики.";
+        "Команды: /start — начать заново, /help — справка, /status — ваши отклики, /questions — текущий вопрос.";
 
     public const string Welcome = "Здравствуйте! " + About + "\n\nПришлите резюме в PDF или DOCX.";
     public const string SendResumeHint = "Пришлите резюме файлом PDF или DOCX.";
@@ -76,6 +76,7 @@ public static class BotTexts
     {
         CandidateStatus.Invited => "Приглашение на созвон",
         CandidateStatus.Rejected => "Отказ",
+        CandidateStatus.Expired => "Истёк срок ответа",
         _ => "На рассмотрении",
     };
 
@@ -84,9 +85,12 @@ public static class BotTexts
         string.Join("\n", applications.Select(a => $"{a.VacancyTitle} — {StatusText(a.Status)}"));
 
     // Уведомление кандидату по типу.
-    public static string Notification(NotificationKind kind, string vacancyTitle) => kind switch
+    public static string Notification(NotificationKind kind, string vacancyTitle, string? question = null) => kind switch
     {
         NotificationKind.Invited => $"Вас приглашают на созвон по вакансии «{vacancyTitle}». Рекрутер свяжется с вами.",
+        NotificationKind.QuestionsReady => $"Уточняющий вопрос по вакансии «{vacancyTitle}»: {question}\nНапишите ответ сообщением.",
         _ => $"Спасибо за отклик на «{vacancyTitle}». К сожалению, сейчас мы не готовы продолжить.",
     };
+
+    public static string Question(PendingQuestionDto q) => $"Вопрос {q.Position + 1} из {q.Total} по вакансии «{q.VacancyTitle}»: {q.Question}\nНапишите ответ сообщением.";
 }

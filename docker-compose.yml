@@ -42,6 +42,7 @@ services:
       Hosting__TrustForwardedHeaders: "true"
       Hosting__DataProtectionKeysPath: /app/keys
       Telemetry__OtlpEndpoint: http://otel-collector:4318
+      AiReview__BaseUrl: ${AI_DOCKER_BASE_URL:-http://host.docker.internal:18081}
     volumes:
       - resumes:/app/storage
       - dp-keys:/app/keys
@@ -82,6 +83,8 @@ services:
       context: .
       dockerfile: src/HireFlow.Web/Dockerfile
     image: hireflow-web
+    environment:
+      HIRE_BOT_USERNAME: ${BOT_USERNAME:-AiHireFlow_Bot}
     ports:
       - "8080:80"
     restart: unless-stopped

@@ -9,6 +9,10 @@ public static class ApplicationText
     public static string Status(ApplicationStatus status) => status switch
     {
         ApplicationStatus.Received => "Новый",
+        ApplicationStatus.AiReview => "Проверка ИИ",
+        ApplicationStatus.AwaitingQuestions => "Ожидает ответов",
+        ApplicationStatus.AiAnswersReview => "Проверка ответов ИИ",
+        ApplicationStatus.Expired => "Истёк срок ответа",
         ApplicationStatus.RecruiterReview => "На проверке",
         ApplicationStatus.AutoRejected => "Автоотказ",
         ApplicationStatus.Invited => "Приглашён",

@@ -82,6 +82,13 @@ internal sealed class FakeHireFlowApiClient : IHireFlowApiClient
     public Task<ApiResult<List<DueNotificationDto>>> GetDueNotificationsAsync(CancellationToken ct) =>
         Task.FromResult(ApiResult<List<DueNotificationDto>>.Ok([.. Due]));
 
+    public PendingQuestionDto? PendingQuestion { get; set; }
+    public Func<string, AnswerQuestionDto>? OnAnswer { get; set; }
+    public Task<ApiResult<PendingQuestionDto>> GetPendingQuestionAsync(long telegramId, CancellationToken ct) =>
+        Task.FromResult(PendingQuestion is null ? ApiResult<PendingQuestionDto>.Failure(ApiStatus.NotFound) : ApiResult<PendingQuestionDto>.Ok(PendingQuestion));
+    public Task<ApiResult<AnswerQuestionDto>> AnswerQuestionAsync(long telegramId, Guid applicationId, int position, string answer, CancellationToken ct) =>
+        Task.FromResult(ApiResult<AnswerQuestionDto>.Ok(OnAnswer?.Invoke(answer) ?? new AnswerQuestionDto(true, null)));
+
     public Task<ApiStatus> MarkNotificationSentAsync(Guid id, CancellationToken ct)
     {
         SentIds.Add(id);

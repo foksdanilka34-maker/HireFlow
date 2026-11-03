@@ -20,6 +20,11 @@ public record RequirementsDto(
     int PassingScore,
     int BorderlineWidth);
 
+public record VacancyQuestionDto(string Text, string? Criterion);
+
+public record VacancyAiRequestDto(string Title, string? Direction, string? Description, List<string> RequiredSkills, List<string> NiceToHaveSkills, int MinYearsOfExperience);
+public record VacancyAiResultDto(string Description, List<string> Suggestions, List<VacancyQuestionDto> Questions);
+
 public record VacancyDto(
     Guid Id,
     string Title,
@@ -29,18 +34,24 @@ public record VacancyDto(
     RequirementsDto Requirements,
     int FreezePeriodDays,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    List<VacancyQuestionDto>? Questions = null);
 
 public record VacancyRequestDto(
     string Title,
     string Direction,
     string? Description,
     RequirementsDto Requirements,
-    int FreezePeriodDays);
+    int FreezePeriodDays,
+    List<VacancyQuestionDto>? Questions = null);
 
 public enum ApplicationStatus
 {
     Received,
+    AiReview,
+    AwaitingQuestions,
+    AiAnswersReview,
+    Expired,
     RecruiterReview,
     AutoRejected,
     Invited,
@@ -91,6 +102,9 @@ public record ScreeningDto(
     List<string> MissingNiceToHaveSkills,
     bool ExperienceIsEnough);
 
+public record AiReviewDto(string Recommendation, int Score, string Explanation, string Model, string PromptVersion, DateTime ReviewedAt);
+public record ApplicationQuestionDto(int Position, string Text, string? Criterion, string? Answer);
+
 public record StatusChangeDto(
     ApplicationStatus? FromStatus,
     ApplicationStatus ToStatus,
@@ -112,9 +126,15 @@ public record ApplicationDto(
     ResumeFormat ResumeFormat,
     bool RejectionSent,
     ScreeningDto Screening,
+    AiReviewDto? AiReview,
+    bool AiReviewUnavailable,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    List<StatusChangeDto> History);
+    List<StatusChangeDto> History,
+    List<ApplicationQuestionDto>? Questions = null,
+    AiReviewDto? AnswersReview = null,
+    bool AnswersReviewUnavailable = false,
+    DateTime? QuestionsDeadline = null);
 
 public record DecisionRequestDto(RecruiterDecision Decision, string? Comment);
 

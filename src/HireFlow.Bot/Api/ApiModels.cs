@@ -13,6 +13,7 @@ public enum CandidateStatus
     InReview,
     Invited,
     Rejected,
+    Expired,
 }
 
 public record CandidateApplicationDto(Guid Id, Guid VacancyId, string VacancyTitle, CandidateStatus Status);
@@ -23,9 +24,12 @@ public enum NotificationKind
 {
     Invited,
     Rejected,
+    QuestionsReady,
 }
 
-public record DueNotificationDto(Guid Id, long TelegramId, NotificationKind Type, string VacancyTitle);
+public record DueNotificationDto(Guid Id, long TelegramId, NotificationKind Type, string VacancyTitle, Guid? ApplicationId = null, string? Question = null);
+public record PendingQuestionDto(Guid ApplicationId, string VacancyTitle, int Position, int Total, string Question, DateTime Deadline);
+public record AnswerQuestionDto(bool Completed, PendingQuestionDto? Next);
 
 public record CreateApplicationCall(
     long TelegramId,

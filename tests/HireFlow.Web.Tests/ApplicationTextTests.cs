@@ -29,7 +29,7 @@ public class ApplicationTextTests
         var application = new ApplicationDto(
             Guid.NewGuid(), Guid.NewGuid(), "Vacancy", Guid.NewGuid(), "Name", "79991234567", status, 3, "resume.pdf",
             ResumeFormat.Pdf, rejectionSent, new ScreeningDto(50, ScreeningVerdict.Failed, [], [], true),
-            DateTime.UtcNow, DateTime.UtcNow, []);
+            null, false, DateTime.UtcNow, DateTime.UtcNow, []);
 
         Assert.Equal(expected, ApplicationText.NeedsInviteConfirmation(application));
     }

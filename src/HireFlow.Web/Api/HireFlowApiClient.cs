@@ -72,6 +72,12 @@ public class HireFlowApiClient(HttpClient http, AuthState auth)
             Content = JsonContent.Create(request, options: Json),
         }, true, ct);
 
+    public Task<ApiResult<VacancyAiResultDto>> SuggestVacancyAsync(VacancyAiRequestDto request, CancellationToken ct = default) =>
+        SendAsync<VacancyAiResultDto>(() => new HttpRequestMessage(HttpMethod.Post, "vacancies/ai-suggestions")
+        {
+            Content = JsonContent.Create(request, options: Json),
+        }, true, ct);
+
     // Сохраняет изменения вакансии.
     public Task<ApiResult<VacancyDto>> UpdateVacancyAsync(Guid id, VacancyRequestDto request, CancellationToken ct = default) =>
         SendAsync<VacancyDto>(() => new HttpRequestMessage(HttpMethod.Put, $"vacancies/{id}")

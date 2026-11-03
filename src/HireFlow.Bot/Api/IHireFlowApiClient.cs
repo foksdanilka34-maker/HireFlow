@@ -28,6 +28,8 @@ public interface IHireFlowApiClient
 
     // Возвращает уведомления, которые пора отправить.
     Task<ApiResult<List<DueNotificationDto>>> GetDueNotificationsAsync(CancellationToken ct);
+    Task<ApiResult<PendingQuestionDto>> GetPendingQuestionAsync(long telegramId, CancellationToken ct);
+    Task<ApiResult<AnswerQuestionDto>> AnswerQuestionAsync(long telegramId, Guid applicationId, int position, string answer, CancellationToken ct);
 
     // Отмечает уведомление отправленным.
     Task<ApiStatus> MarkNotificationSentAsync(Guid id, CancellationToken ct);

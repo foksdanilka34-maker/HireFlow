@@ -4,4 +4,5 @@ public enum NotificationType
 {
     Invited,
     Rejected,
+    QuestionsReady,
 }

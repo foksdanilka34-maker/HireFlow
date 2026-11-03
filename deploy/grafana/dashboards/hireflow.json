@@ -788,6 +788,28 @@
           "legendFormat": "{{client}}"
         }
       ]
+    },
+    {
+      "id": 24, "type": "row", "title": "Проверка ИИ", "collapsed": false,
+      "gridPos": { "x": 0, "y": 83, "w": 24, "h": 1 }, "panels": []
+    },
+    {
+      "id": 25, "type": "timeseries", "title": "Очередь и ошибки ИИ",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 84, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }, "options": {},
+      "targets": [
+        { "refId": "A", "expr": "max(hireflow_ai_jobs_pending)", "legendFormat": "в очереди" },
+        { "refId": "B", "expr": "max(hireflow_ai_jobs_overdue)", "legendFormat": "просрочено" },
+        { "refId": "C", "expr": "max(hireflow_ai_jobs_failed)", "legendFormat": "не удалось" }
+      ]
+    },
+    {
+      "id": 26, "type": "timeseries", "title": "Попытки ИИ в минуту",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 84, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }, "options": {},
+      "targets": [ { "refId": "A", "expr": "sum by (result) (rate(hireflow_ai_review_attempts_total[5m])) * 60", "legendFormat": "{{result}}" } ]
     }
   ]
 }

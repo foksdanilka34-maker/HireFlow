@@ -32,8 +32,8 @@ else
                 <dd class="col-sm-8">@ApplicationText.Status(a.Status)</dd>
                 <dt class="col-sm-4">Дата отклика</dt>
                 <dd class="col-sm-8">@a.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</dd>
-                <dt class="col-sm-4">Опыт</dt>
-                <dd class="col-sm-8">@a.YearsOfExperience лет</dd>
+                <dt class="col-sm-4">Опыт (лет)</dt>
+                <dd class="col-sm-8">@a.YearsOfExperience</dd>
             </dl>
 
             <h2 class="h5">Скрининг</h2>
@@ -49,6 +49,43 @@ else
                 <dt class="col-sm-4">Опыт</dt>
                 <dd class="col-sm-8">@(a.Screening.ExperienceIsEnough ? "Опыта достаточно" : "Опыта недостаточно")</dd>
             </dl>
+
+            @if (a.Status == ApplicationStatus.AiReview)
+            {
+                <div class="alert alert-info">Отклик ожидает проверки ИИ.</div>
+            }
+            else if (a.AiReviewUnavailable)
+            {
+                <div class="alert alert-warning">Проверка ИИ недоступна. Рассмотрите отклик самостоятельно.</div>
+            }
+            else if (a.AiReview is { } ai)
+            {
+                <h2 class="h5">Проверка ИИ</h2>
+                <p>Рекомендация: @(ai.Recommendation == "pass" ? "пройти к рассмотрению" : "требует внимания") · Оценка: @ai.Score / 100</p>
+                <p>@ai.Explanation</p>
+                <p class="text-muted">ИИ учитывает результаты скрининга и фрагменты резюме, из которых по шаблонам удалена часть личных данных. Проверьте вывод по оригиналу: итоговое решение принимает рекрутер.</p>
+            }
+
+            @if (a.Questions is { Count: > 0 })
+            {
+                <h2 class="h5">Уточняющие вопросы</h2>
+                @foreach (var q in a.Questions)
+                {
+                    <p><strong>@q.Text</strong><br />Ответ: @(q.Answer ?? "ожидается")
+                        @if (!string.IsNullOrWhiteSpace(q.Criterion)) { <br /> <span>Критерий: @q.Criterion</span> }
+                    </p>
+                }
+                @if (a.Status == ApplicationStatus.AwaitingQuestions && a.QuestionsDeadline is { } deadline)
+                {
+                    <p>Ответ ожидается до @deadline.ToLocalTime().ToString("dd.MM.yyyy HH:mm").</p>
+                }
+                @if (a.AnswersReviewUnavailable) { <div class="alert alert-warning">ИИ не смог проверить ответы; рассмотрите их самостоятельно.</div> }
+                else if (a.AnswersReview is { } answerReview)
+                {
+                    <p><strong>Проверка ответов ИИ:</strong> @(answerReview.Recommendation switch { "match" => "соответствуют", "difference" => "есть расхождения", _ => "требуют внимания" })</p>
+                    <p>@answerReview.Explanation</p>
+                }
+            }
 
             @if (a.Status == ApplicationStatus.AutoRejected && a.RejectionSent)
             {

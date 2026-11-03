@@ -23,6 +23,61 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("HireFlow.Domain.Ai.AiReviewJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTime>("AvailableAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("available_at");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("resume")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("last_error");
+
+                    b.Property<string>("RequirementsSnapshot")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("requirements_snapshot");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ai_review_jobs");
+
+                    b.HasIndex("ApplicationId", "Kind")
+                        .IsUnique()
+                        .HasDatabaseName("ix_ai_review_jobs_application_id_kind");
+
+                    b.HasIndex("Status", "AvailableAt")
+                        .HasDatabaseName("ix_ai_review_jobs_status_available_at");
+
+                    b.ToTable("ai_review_jobs", (string)null);
+                });
+
             modelBuilder.Entity("HireFlow.Domain.ApiClients.ApiClient", b =>
                 {
                     b.Property<Guid>("Id")
@@ -181,6 +236,47 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                     b.ToTable("candidates", (string)null);
                 });
 
+            modelBuilder.Entity("HireFlow.Domain.JobApplications.ApplicationQuestion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Answer")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("answer");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<string>("Criterion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("criterion");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("text");
+
+                    b.HasKey("Id")
+                        .HasName("pk_application_questions");
+
+                    b.HasIndex("ApplicationId", "Position")
+                        .IsUnique()
+                        .HasDatabaseName("ix_application_questions_application_id_position");
+
+                    b.ToTable("application_questions", (string)null);
+                });
+
             modelBuilder.Entity("HireFlow.Domain.JobApplications.ApplicationStatusChange", b =>
                 {
                     b.Property<Guid>("Id")
@@ -243,6 +339,14 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                         .HasColumnName("id")
                         .HasDefaultValueSql("uuidv7()");
 
+                    b.Property<bool>("AiReviewUnavailable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ai_review_unavailable");
+
+                    b.Property<bool>("AnswersReviewUnavailable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("answers_review_unavailable");
+
                     b.Property<Guid>("CandidateId")
                         .HasColumnType("uuid")
                         .HasColumnName("candidate_id");
@@ -250,6 +354,10 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("QuestionsDeadline")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("questions_deadline");
 
                     b.Property<string>("ResumeFileHash")
                         .IsRequired()
@@ -328,11 +436,12 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_applications");
 
-                    b.HasIndex("CandidateId")
-                        .HasDatabaseName("ix_applications_candidate_id");
-
                     b.HasIndex("VacancyId")
                         .HasDatabaseName("ix_applications_vacancy_id");
+
+                    b.HasIndex("CandidateId", "VacancyId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_applications_candidate_id_vacancy_id");
 
                     b.ToTable("applications", (string)null);
                 });
@@ -492,6 +601,10 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("freeze_period_days");
 
+                    b.Property<string>("QuestionsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("questions_json");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -562,6 +675,18 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                     b.ToTable("vacancies", (string)null);
                 });
 
+            modelBuilder.Entity("HireFlow.Domain.Ai.AiReviewJob", b =>
+                {
+                    b.HasOne("HireFlow.Domain.JobApplications.JobApplication", "Application")
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ai_review_jobs_job_applications_application_id");
+
+                    b.Navigation("Application");
+                });
+
             modelBuilder.Entity("HireFlow.Domain.ApiClients.ApiUsage", b =>
                 {
                     b.HasOne("HireFlow.Domain.ApiClients.ApiClient", null)
@@ -570,6 +695,16 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_api_usages_api_clients_api_client_id");
+                });
+
+            modelBuilder.Entity("HireFlow.Domain.JobApplications.ApplicationQuestion", b =>
+                {
+                    b.HasOne("HireFlow.Domain.JobApplications.JobApplication", null)
+                        .WithMany("Questions")
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_application_questions_applications_application_id");
                 });
 
             modelBuilder.Entity("HireFlow.Domain.JobApplications.ApplicationStatusChange", b =>
@@ -603,6 +738,78 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_applications_vacancies_vacancy_id");
+
+                    b.OwnsOne("HireFlow.Domain.Ai.AiReviewResult", "AiReview", b1 =>
+                        {
+                            b1.Property<Guid>("JobApplicationId");
+
+                            b1.Property<string>("Explanation")
+                                .IsRequired();
+
+                            b1.Property<string>("Model")
+                                .IsRequired();
+
+                            b1.Property<string>("PromptVersion")
+                                .IsRequired();
+
+                            b1.Property<string>("Recommendation")
+                                .IsRequired();
+
+                            b1.Property<DateTime>("ReviewedAt");
+
+                            b1.Property<int>("Score");
+
+                            b1.HasKey("JobApplicationId")
+                                .HasName("pk_applications");
+
+                            b1.ToTable("applications");
+
+                            b1
+                                .ToJson("ai_review")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("JobApplicationId")
+                                .HasConstraintName("fk_applications_applications_job_application_id");
+                        });
+
+                    b.OwnsOne("HireFlow.Domain.Ai.AiReviewResult", "AnswersReview", b1 =>
+                        {
+                            b1.Property<Guid>("JobApplicationId")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("Explanation")
+                                .IsRequired();
+
+                            b1.Property<string>("Model")
+                                .IsRequired();
+
+                            b1.Property<string>("PromptVersion")
+                                .IsRequired();
+
+                            b1.Property<string>("Recommendation")
+                                .IsRequired();
+
+                            b1.Property<DateTime>("ReviewedAt");
+
+                            b1.Property<int>("Score");
+
+                            b1.HasKey("JobApplicationId");
+
+                            b1.ToTable("applications");
+
+                            b1
+                                .ToJson("answers_review")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("JobApplicationId")
+                                .HasConstraintName("fk_applications_applications_id");
+                        });
+
+                    b.Navigation("AiReview");
+
+                    b.Navigation("AnswersReview");
                 });
 
             modelBuilder.Entity("HireFlow.Domain.Notifications.Notification", b =>
@@ -620,6 +827,8 @@ namespace HireFlow.Infrastructure.Persistence.Migrations
                     b.Navigation("History");
 
                     b.Navigation("Notifications");
+
+                    b.Navigation("Questions");
                 });
 #pragma warning restore 612, 618
         }

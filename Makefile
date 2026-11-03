@@ -5,6 +5,14 @@
 #   make up       — весь стенд в Docker, кабинет на http://localhost:8080
 #   make help     — список команд
 
+# GNU Make for Windows запускает cmd.exe по умолчанию, а команды ниже используют POSIX shell.
+# GIT_BASH можно переопределить, если Git for Windows установлен не в стандартную папку.
+ifeq ($(OS),Windows_NT)
+GIT_BASH ?= C:/Program Files/Git/bin/sh.exe
+SHELL := $(GIT_BASH)
+export MSYS_NO_PATHCONV := 1
+endif
+
 # Загружает .env в окружение команды: dotnet run сам .env не читает.
 ENV := set -a; . ./.env; set +a;
 
@@ -14,7 +22,7 @@ ALERTMANAGER_IMAGE := prom/alertmanager:v0.34.1
 PROMTOOL := docker run --rm -v "$(CURDIR)":/repo -v "$(CURDIR)/deploy/prometheus/rules":/etc/prometheus/rules:ro -w /repo --entrypoint promtool $(PROMETHEUS_IMAGE)
 AMTOOL := docker run --rm -v "$(CURDIR)":/repo -w /repo --entrypoint amtool $(ALERTMANAGER_IMAGE)
 
-.PHONY: help run db migrate api bot web test check rules-check stop reset-db recruiter api-client up down logs docker-recruiter docker-api-client load drill
+.PHONY: help run db migrate api bot web test check rules-check stop reset-db recruiter api-client up down logs docker-recruiter docker-api-client load drill ai-stop
 
 help:
 	@echo "make run       база + миграции + API, бот и кабинет"
@@ -42,6 +50,7 @@ help:
 	@echo "make docker-api-client NAME=acme [REVOKE=1]  выдать или отозвать ключ публичного API в стенде"
 	@echo "make load      нагрузочный тест k6 на поднятом стенде (RATE=10 DURATION=4m, docs/drills)"
 	@echo "make drill     учения: нагрузка + пауза PostgreSQL стенда (docs/drills/postgres-pause.md)"
+	@echo "make ai-stop   остановить локальный сервер ИИ, запущенный HireFlow (Windows)"
 	@echo "Не запускайте make up и make run одновременно: два бота с одним токеном мешают друг другу."
 
 # Создаёт .env из примера при первом запуске и просит вписать токен бота.
@@ -90,8 +99,8 @@ check: rules-check
 # Конфиг Prometheus с правилами, тесты правил (tests/prometheus) и оба варианта конфига Alertmanager.
 rules-check:
 	$(PROMTOOL) check config deploy/prometheus.yml
-	$(PROMTOOL) check rules deploy/prometheus/rules/*.rules.yml
-	$(PROMTOOL) test rules tests/prometheus/*.test.yml
+	$(PROMTOOL) check rules $(wildcard deploy/prometheus/rules/*.rules.yml)
+	$(PROMTOOL) test rules $(wildcard tests/prometheus/*.test.yml)
 	$(AMTOOL) check-config deploy/alertmanager/alertmanager.yml deploy/alertmanager/alertmanager-telegram.yml
 
 recruiter: migrate
@@ -113,11 +122,21 @@ reset-db: .env
 # Весь стенд в Docker: миграции, API, бот и кабинет за Caddy.
 up: .env
 	@grep -q "replace-with-token" .env && echo "В .env не задан Bot__TelegramToken" && exit 1 || true
+ifeq ($(OS),Windows_NT)
+	@if grep -qi '^AiReview__Enabled=true' .env; then powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-ai.ps1 || echo "Сервер ИИ не запущен; при недоступности модели отклики попадут рекрутеру после повторов."; fi
+endif
 	docker compose --profile app up -d --build
 	@echo "Кабинет: http://localhost:8080"
 
 down:
 	docker compose --profile app down
+
+ai-stop:
+ifeq ($(OS),Windows_NT)
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/stop-ai.ps1
+else
+	@echo "Остановите llama-server вручную."
+endif
 
 logs:
 	docker compose --profile app logs -f

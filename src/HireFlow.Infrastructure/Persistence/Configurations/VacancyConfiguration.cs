@@ -14,6 +14,7 @@ public class VacancyConfiguration : IEntityTypeConfiguration<Vacancy>
 
         builder.Property(v => v.Title).HasMaxLength(Vacancy.TitleMaxLength);
         builder.Property(v => v.Direction).HasMaxLength(Vacancy.DirectionMaxLength);
+        builder.Property(v => v.QuestionsJson).HasColumnType("jsonb");
 
         builder.Property(v => v.Status)
             .HasConversion(new SnakeCaseEnumConverter<VacancyStatus>())

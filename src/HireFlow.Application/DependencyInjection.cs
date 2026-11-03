@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<IVacancyService, VacancyService>();
         services.AddScoped<ICandidateService, CandidateService>();
         services.AddScoped<IJobApplicationService, JobApplicationService>();
+        services.AddScoped<QuestionnaireService>();
         services.AddScoped<IResumeReader, ResumeReader>();
         services.AddScoped<IVacancyMatchingService, VacancyMatchingService>();
         services.AddScoped<INotificationService, NotificationService>();

@@ -23,6 +23,8 @@ public class HireFlowMetrics
     private readonly Counter<long> _uploadsLimited;
     private readonly Counter<long> _logins;
     private readonly Histogram<double> _publicApiDuration;
+    private readonly Counter<long> _aiReviews;
+    private readonly Histogram<double> _aiReviewDuration;
 
     // Создаёт meter через фабрику DI и регистрирует инструменты.
     public HireFlowMetrics(IMeterFactory meterFactory)
@@ -36,9 +38,17 @@ public class HireFlowMetrics
         _logins = Meter.CreateCounter<long>("hireflow.recruiter.logins", description: "Попытки входа рекрутера");
         _publicApiDuration = Meter.CreateHistogram("hireflow.public_api.request.duration", "s", "Запросы публичного API",
             tags: null, advice: new InstrumentAdvice<double> { HistogramBucketBoundaries = PublicApiDurationBuckets });
+        _aiReviews = Meter.CreateCounter<long>("hireflow.ai.review.attempts", description: "Попытки проверки ИИ");
+        _aiReviewDuration = Meter.CreateHistogram<double>("hireflow.ai.review.duration", "s", "Длительность проверки ИИ");
     }
 
     public Meter Meter { get; }
+
+    public void AiReviewAttempt(string result, TimeSpan duration)
+    {
+        _aiReviews.Add(1, new KeyValuePair<string, object?>("result", result));
+        _aiReviewDuration.Record(duration.TotalSeconds);
+    }
 
     // Учитывает созданный отклик с вердиктом скрининга.
     public void ApplicationCreated(ScreeningVerdict verdict) =>

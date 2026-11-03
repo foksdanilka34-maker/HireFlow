@@ -10,6 +10,11 @@
 	header Cache-Control "no-cache"
 
 	# Файлы Blazor без SPA fallback: нет файла — 404, а не index.html.
+	handle /appsettings.Production.json {
+		header Content-Type application/json
+		respond `{"ApiBaseUrl":"api/","BotUsername":"{$HIRE_BOT_USERNAME}"}` 200
+	}
+
 	handle /_framework/* {
 		file_server {
 			precompressed br gzip
